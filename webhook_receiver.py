@@ -17,7 +17,7 @@ import threading
 import time
 import xml.etree.ElementTree as ET
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import requests
@@ -30,15 +30,23 @@ from send_campaigns import (
     EVOLUTION_API_URL,
     MAX_WHATSAPP_ACCOUNTS,
     MENSAGEM_PADRAO_PROSPECCAO,
+    aplicar_quarentena_conta,
+    conta_em_quarentena,
+    escolher_consultor_destino,
     evolution_check_connection,
     evolution_create_or_connect_instance,
     evolution_logout_instance,
     get_active_accounts,
+    get_admin_account,
     is_business_hours,
+    ler_logs_restricao,
+    limpar_quarentena_conta,
+    load_routing_config,
     load_whatsapp_accounts,
     registrar_disparo_conta,
     resolver_conta_whatsapp,
     salvar_leads_csv,
+    save_routing_config,
     save_whatsapp_accounts,
     send_whatsapp_message,
 )
@@ -309,7 +317,18 @@ def process_message(
     conta_id = conta.get("id", "conta_1")
     conta_nome = conta.get("nome", conta_id)
     instance_name = conta.get("instance_name") or f"chip_{conta.get('slot', 1)}"
-    consultor_destino = conta.get("consultant_phone") or CONSULTANT_PHONE_NUMBER
+
+    routing_cfg = load_routing_config()
+    destino_info = escolher_consultor_destino(conta)
+    consultor_destino = destino_info.get("telefone") or CONSULTANT_PHONE_NUMBER
+    consultor_nome = destino_info.get("nome", "Consultor")
+
+    # Define por qual conta o alerta interno ao consultor será enviado (prioriza Conta Principal Administradora se ativa)
+    conta_notificadora = conta
+    if routing_cfg.get("usar_conta_admin_para_alertas", True):
+        admin_acc = get_admin_account()
+        if str(admin_acc.get("connection_status", "")).lower() == "open":
+            conta_notificadora = admin_acc
 
     if texto_limpo in ("1", "1️⃣"):
         status = "interessado"
@@ -317,16 +336,17 @@ def process_message(
 
         if not ja_interagiu_antes:
             send_whatsapp_text(phone_norm, RESPOSTA_INTERESSADO, account=conta)
-            if consultor_destino:
+            if consultor_destino and routing_cfg.get("modo_encaminhamento") != "apenas_painel":
                 wa_link = f"https://wa.me/{phone_norm}"
                 notification_msg = (
                     f"🔔 *Novo Lead Interessado (Plano Empresarial)!*\n"
-                    f"📲 *Instância Evolution:* {conta_nome} ({instance_name})\n\n"
+                    f"📲 *Captado por:* {conta_nome} ({instance_name})\n"
+                    f"🎯 *Encaminhado para:* {consultor_nome}\n\n"
                     f"👤 *Nome:* {nome_exibicao}\n"
                     f"📱 *Telefone:* {phone_norm}\n\n"
                     f"🔗 *Conversar agora:* {wa_link}"
                 )
-                send_whatsapp_text(consultor_destino, notification_msg, account=conta)
+                send_whatsapp_text(consultor_destino, notification_msg, account=conta_notificadora)
 
     elif texto_limpo in ("2", "2️⃣", "sair", "parar", "nao", "não"):
         status = "opt_out"
@@ -341,17 +361,40 @@ def process_message(
         # Só envia a mensagem automática "Obrigado pelo retorno..." na PRIMEIRA vez que o lead responde!
         if not ja_interagiu_antes:
             send_whatsapp_text(phone_norm, RESPOSTA_LIVRE, account=conta)
-            if consultor_destino:
+            if consultor_destino and routing_cfg.get("modo_encaminhamento") != "apenas_painel":
                 wa_link = f"https://wa.me/{phone_norm}"
                 notification_msg = (
                     f"💬 *Nova Resposta Livre de Lead!*\n"
-                    f"📲 *Instância Evolution:* {conta_nome} ({instance_name})\n\n"
+                    f"📲 *Captado por:* {conta_nome} ({instance_name})\n"
+                    f"🎯 *Encaminhado para:* {consultor_nome}\n\n"
                     f"👤 *Nome:* {nome_exibicao}\n"
                     f"📱 *Telefone:* {phone_norm}\n"
                     f"📝 *Mensagem:* \"{texto_limpo}\"\n\n"
                     f"🔗 *Atender agora:* {wa_link}"
                 )
-                send_whatsapp_text(consultor_destino, notification_msg, account=conta)
+                send_whatsapp_text(consultor_destino, notification_msg, account=conta_notificadora)
+
+    # Dispara também para Webhook CRM externo caso configurado
+    crm_url = str(routing_cfg.get("webhook_crm_url") or "").strip()
+    if crm_url and status in ("interessado", "respondeu"):
+        try:
+            requests.post(
+                crm_url,
+                json={
+                    "lead_phone": phone_norm,
+                    "lead_name": nome_exibicao,
+                    "response": texto_limpo,
+                    "status": status,
+                    "chip_id": conta_id,
+                    "instance_name": instance_name,
+                    "assigned_consultant": consultor_nome,
+                    "assigned_consultant_phone": consultor_destino,
+                    "timestamp": datetime.now().isoformat(),
+                },
+                timeout=3,
+            )
+        except Exception:
+            pass
 
     update_lead_status(phone_norm, status, texto_limpo, profile_name, conta_id=conta_id)
 
@@ -437,16 +480,28 @@ def handle_webhook(subpath: Optional[str] = None):
         if event_name in ("messages.upsert", "message.upsert") or ("instance" in data and "data" in data):
             payload_data = data.get("data") or {}
 
-            # Atualização de status de conexão do chip (open / close / connecting)
+            # Atualização de status de conexão do chip (open / close / connecting / refused)
             if "connection" in event_name or "state" in payload_data:
-                new_state = payload_data.get("state") or payload_data.get("status") or "unknown"
+                new_state = str(payload_data.get("state") or payload_data.get("status") or "unknown").lower()
+                status_reason = str(payload_data.get("statusReason") or "")
                 contas = load_whatsapp_accounts()
                 for c in contas:
                     if c.get("instance_name") == instance_name or c.get("id") == instance_name:
                         c["connection_status"] = new_state
+                        if new_state == "open":
+                            c["restrito_ate"] = ""
+                            c["motivo_restricao"] = ""
+                            c["sugestao_restricao"] = ""
+                            c["nivel_risco"] = "BAIXO"
                         break
                 save_whatsapp_accounts(contas)
-                log_event("evolution_connection", instance_name, {"instance": instance_name, "state": new_state})
+                if new_state == "refused" or status_reason in ("401", "403", "428", "515"):
+                    aplicar_quarentena_conta(
+                        instance_name,
+                        f"CONN_{new_state.upper()}_{status_reason or 'DROP'}",
+                        f"Evolution connection state={new_state} reason={status_reason}",
+                    )
+                log_event("evolution_connection", instance_name, {"instance": instance_name, "state": new_state, "reason": status_reason})
                 return jsonify({"status": "connection_updated", "state": new_state}), 200
 
             # Lista de mensagens em data (v1 ou v2)
@@ -514,12 +569,13 @@ def index_dashboard():
 
 
 def _sanitize_accounts_for_ui(contas: List[Dict], stats_por_conta: Dict[str, Dict], check_live: bool = False) -> List[Dict]:
-    """Prepara os dados das 5 instâncias da Evolution API para o frontend."""
+    """Prepara os dados da Conta Admin + 50 instâncias de prospecção para o frontend."""
     saida: List[Dict] = []
-    for c in contas[:MAX_WHATSAPP_ACCOUNTS]:
+    for c in contas[: MAX_WHATSAPP_ACCOUNTS + 1]:
         cid = c.get("id", "conta_1")
-        slot = c.get("slot", 1)
-        inst = c.get("instance_name") or f"chip_{slot}"
+        slot = int(c.get("slot", 1))
+        is_admin = bool(c.get("admin_only") or cid == "conta_admin")
+        inst = c.get("instance_name") or ("chip_admin" if is_admin else f"chip_{slot}")
         apikey_raw = str(c.get("apikey", "") or "").strip()
         metrica = stats_por_conta.get(cid, {"enviados": 0, "interessados": 0, "respondeu": 0, "opt_out": 0})
 
@@ -528,19 +584,30 @@ def _sanitize_accounts_for_ui(contas: List[Dict], stats_por_conta: Dict[str, Dic
             chk = evolution_check_connection(c)
             conn_state = chk.get("state", conn_state)
 
+        cooldown_sec = conta_em_quarentena(c)
+
         saida.append({
             "id": cid,
             "slot": slot,
-            "nome": c.get("nome", f"Chip WhatsApp #{slot}"),
+            "role": "admin" if is_admin else "prospeccao",
+            "admin_only": is_admin,
+            "nome": c.get("nome", "👑 Conta Principal Administradora" if is_admin else f"Chip #{slot}"),
             "instance_name": inst,
-            "ativo": bool(c.get("ativo", False)),
+            "ativo": False if is_admin else bool(c.get("ativo", False)),
             "connection_status": conn_state,
             "telefone_exibicao": c.get("telefone_exibicao", ""),
             "has_custom_apikey": bool(apikey_raw),
             "consultant_phone": c.get("consultant_phone", ""),
             "daily_limit": int(c.get("daily_limit", 60)),
             "enviados_hoje": int(c.get("enviados_hoje", 0)),
+            "erros_hoje": int(c.get("erros_hoje", 0)),
             "ultimo_disparo_em": c.get("ultimo_disparo_em", ""),
+            "cooldown_seconds": cooldown_sec,
+            "restrito_ate": c.get("restrito_ate", "") if cooldown_sec > 0 else "",
+            "motivo_restricao": c.get("motivo_restricao", "") if cooldown_sec > 0 else "",
+            "sugestao_restricao": c.get("sugestao_restricao", "") if cooldown_sec > 0 else "",
+            "nivel_risco": c.get("nivel_risco", "BAIXO") if cooldown_sec > 0 else ("MÉDIO" if int(c.get("erros_hoje", 0)) > 0 else "BAIXO"),
+            "ultimo_erro_detalhe": c.get("ultimo_erro_detalhe", ""),
             "stats": metrica,
         })
     return saida
@@ -548,7 +615,7 @@ def _sanitize_accounts_for_ui(contas: List[Dict], stats_por_conta: Dict[str, Dic
 
 @app.route("/api/dashboard", methods=["GET"])
 def api_dashboard():
-    """Retorna KPIs, status das 5 instâncias Evolution API, lista paginada de leads, logs e configuração."""
+    """Retorna KPIs, Conta Admin, matriz dos 50 chips, restrições com timer, encaminhamento, leads e logs."""
     try:
         page = max(1, int(request.args.get("page", 1)))
         per_page = max(1, min(200, int(request.args.get("per_page", 50))))
@@ -563,12 +630,14 @@ def api_dashboard():
             "interessado": 0,
             "respondeu": 0,
             "opt_out": 0,
+            "sem_whatsapp": 0,
             "erro": 0,
         }
         stats_por_conta: Dict[str, Dict] = {
             f"conta_{i}": {"enviados": 0, "interessados": 0, "respondeu": 0, "opt_out": 0}
             for i in range(1, MAX_WHATSAPP_ACCOUNTS + 1)
         }
+        stats_por_conta["conta_admin"] = {"enviados": 0, "interessados": 0, "respondeu": 0, "opt_out": 0}
         filtered: List[Dict] = []
 
         if os.path.exists(LEADS_CSV):
@@ -613,7 +682,7 @@ def api_dashboard():
         recent_events: List[Dict] = []
         if os.path.exists(EVENTS_LOG):
             with open(EVENTS_LOG, "r", encoding="utf-8", errors="replace") as ef:
-                lines = ef.readlines()[-25:]
+                lines = ef.readlines()[-35:]
                 for ln in reversed(lines):
                     try:
                         recent_events.append(json.loads(ln.strip()))
@@ -621,9 +690,17 @@ def api_dashboard():
                         pass
 
         contas_raw = load_whatsapp_accounts()
-        contas_ui = _sanitize_accounts_for_ui(contas_raw, stats_por_conta)
-        ativas_count = sum(1 for c in contas_ui if c["ativo"])
-        capacidade_diaria_total = sum(c["daily_limit"] for c in contas_ui if c["ativo"])
+        todas_ui = _sanitize_accounts_for_ui(contas_raw, stats_por_conta)
+        admin_ui = next((c for c in todas_ui if c.get("admin_only") or c.get("id") == "conta_admin"), todas_ui[0])
+        prospeccao_ui = [c for c in todas_ui if not c.get("admin_only") and c.get("id") != "conta_admin"]
+
+        ativas_count = sum(1 for c in prospeccao_ui if c["ativo"] and c["cooldown_seconds"] == 0)
+        conectadas_count = sum(1 for c in prospeccao_ui if str(c.get("connection_status", "")).lower() == "open")
+        restritas_count = sum(1 for c in prospeccao_ui if c["cooldown_seconds"] > 0)
+        capacidade_diaria_total = sum(c["daily_limit"] for c in prospeccao_ui if c["ativo"])
+
+        restrictions_log = ler_logs_restricao(30)
+        routing_cfg = load_routing_config()
 
         config_info = {
             "evolution_api_url": os.getenv("EVOLUTION_API_URL", EVOLUTION_API_URL),
@@ -631,20 +708,25 @@ def api_dashboard():
             "consultant_phone": os.getenv("CONSULTANT_PHONE_NUMBER", ""),
             "verify_token": os.getenv("WEBHOOK_VERIFY_TOKEN", ""),
             "daily_limit": int(os.getenv("DAILY_MESSAGE_LIMIT", 60)),
-            "min_delay": float(os.getenv("MIN_DELAY", 6.0)),
-            "max_delay": float(os.getenv("MAX_DELAY", 15.0)),
+            "min_delay": float(os.getenv("MIN_DELAY", 15.0)),
+            "max_delay": float(os.getenv("MAX_DELAY", 35.0)),
             "dry_run": os.getenv("DRY_RUN", "True").lower() == "true",
             "business_hours_now": is_business_hours(),
             "mensagem_padrao": MENSAGEM_PADRAO_PROSPECCAO,
             "max_accounts": MAX_WHATSAPP_ACCOUNTS,
             "active_accounts_count": ativas_count,
+            "connected_accounts_count": conectadas_count,
+            "restricted_accounts_count": restritas_count,
             "total_daily_capacity": capacidade_diaria_total,
         }
 
         return jsonify({
             "ok": True,
             "stats": stats,
-            "accounts": contas_ui,
+            "admin_account": admin_ui,
+            "accounts": prospeccao_ui,
+            "restrictions": restrictions_log,
+            "routing": routing_cfg,
             "leads": paginated,
             "filtered_total": total_filtered,
             "page": page,
@@ -711,7 +793,7 @@ def api_evolution_logout():
 
 @app.route("/api/accounts", methods=["GET", "POST"])
 def api_accounts():
-    """Gerencia as até 5 instâncias simultâneas da Evolution API."""
+    """Gerencia a Conta Principal Administradora + até 50 instâncias de prospecção da Evolution API."""
     if request.method == "GET":
         contas = load_whatsapp_accounts()
         return jsonify({"ok": True, "accounts": _sanitize_accounts_for_ui(contas, {})}), 200
@@ -719,19 +801,36 @@ def api_accounts():
     try:
         body = request.get_json(silent=True) or {}
         contas = load_whatsapp_accounts()
+        action = str(body.get("action") or "").strip()
 
-        if body.get("action") == "reset_counters":
+        if action == "reset_counters":
             hoje = datetime.now().strftime("%Y-%m-%d")
             for c in contas:
                 c["enviados_hoje"] = 0
+                c["erros_hoje"] = 0
                 c["data_contagem"] = hoje
             save_whatsapp_accounts(contas)
-            return jsonify({"ok": True, "message": "Contadores diários das 5 instâncias zerados."}), 200
+            return jsonify({"ok": True, "message": "Contadores diários das 50 instâncias zerados."}), 200
 
-        if body.get("action") == "toggle":
+        if action == "enable_connected":
+            for c in contas:
+                if c.get("id") == "conta_admin" or c.get("admin_only"):
+                    c["ativo"] = False
+                else:
+                    c["ativo"] = str(c.get("connection_status", "")).lower() == "open"
+            save_whatsapp_accounts(contas)
+            return jsonify({"ok": True, "message": "Apenas chips conectados foram ativados no Pool."}), 200
+
+        if action == "pause_all":
+            for c in contas:
+                c["ativo"] = False
+            save_whatsapp_accounts(contas)
+            return jsonify({"ok": True, "message": "Todos os 50 chips foram pausados."}), 200
+
+        if action == "toggle":
             target_id = str(body.get("id", "")).strip()
             for c in contas:
-                if c.get("id") == target_id:
+                if c.get("id") == target_id and not c.get("admin_only") and target_id != "conta_admin":
                     c["ativo"] = not bool(c.get("ativo", False))
                     break
             save_whatsapp_accounts(contas)
@@ -740,7 +839,7 @@ def api_accounts():
         incoming_list = body.get("accounts")
         if isinstance(incoming_list, list):
             mapa_atual = {c["id"]: c for c in contas}
-            for item in incoming_list[:MAX_WHATSAPP_ACCOUNTS]:
+            for item in incoming_list[: MAX_WHATSAPP_ACCOUNTS + 1]:
                 cid = str(item.get("id", "")).strip()
                 if cid not in mapa_atual:
                     continue
@@ -749,7 +848,7 @@ def api_accounts():
                     atual["nome"] = str(item["nome"] or atual["nome"]).strip()
                 if "instance_name" in item and str(item["instance_name"]).strip():
                     atual["instance_name"] = re.sub(r"[^a-zA-Z0-9_-]", "_", str(item["instance_name"]).strip())
-                if "ativo" in item:
+                if "ativo" in item and cid != "conta_admin" and not atual.get("admin_only"):
                     atual["ativo"] = bool(item["ativo"])
                 if "telefone_exibicao" in item:
                     atual["telefone_exibicao"] = normalize_phone(str(item["telefone_exibicao"] or ""))
@@ -770,6 +869,146 @@ def api_accounts():
         return jsonify({"ok": False, "error": "Payload inválido para /api/accounts"}), 400
     except Exception as e:
         logger.error(f"Erro em /api/accounts: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/routing", methods=["GET", "POST"])
+def api_routing():
+    """Gerencia as opções de encaminhamento de leads (Fixo, Round-Robin de Consultores, Webhook CRM, Conta Admin)."""
+    if request.method == "GET":
+        return jsonify({"ok": True, "routing": load_routing_config()}), 200
+    try:
+        body = request.get_json(silent=True) or {}
+        cfg = load_routing_config()
+        if "modo_encaminhamento" in body:
+            cfg["modo_encaminhamento"] = str(body["modo_encaminhamento"]).strip()
+        if "usar_conta_admin_para_alertas" in body:
+            cfg["usar_conta_admin_para_alertas"] = bool(body["usar_conta_admin_para_alertas"])
+        if "notificar_restricoes_no_admin" in body:
+            cfg["notificar_restricoes_no_admin"] = bool(body["notificar_restricoes_no_admin"])
+        if "som_notificacao_ativo" in body:
+            cfg["som_notificacao_ativo"] = bool(body["som_notificacao_ativo"])
+        if "consultor_padrao" in body:
+            cfg["consultor_padrao"] = normalize_phone(str(body["consultor_padrao"] or ""))
+            if cfg["consultor_padrao"]:
+                os.environ["CONSULTANT_PHONE_NUMBER"] = cfg["consultor_padrao"]
+        if "webhook_crm_url" in body:
+            cfg["webhook_crm_url"] = str(body["webhook_crm_url"] or "").strip()
+        if isinstance(body.get("fila_consultores"), list):
+            nova_fila = []
+            for item in body["fila_consultores"]:
+                if isinstance(item, dict):
+                    tel = normalize_phone(str(item.get("telefone") or ""))
+                    if tel:
+                        nova_fila.append({
+                            "nome": str(item.get("nome") or "Consultor").strip(),
+                            "telefone": tel,
+                            "ativo": bool(item.get("ativo", True)),
+                            "recebidos": int(item.get("recebidos", 0)),
+                        })
+            cfg["fila_consultores"] = nova_fila
+        save_routing_config(cfg)
+        return jsonify({"ok": True, "routing": cfg}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/restrictions", methods=["GET", "POST"])
+def api_restrictions():
+    """Gerencia timers de quarentena/restrição dos 50 chips e relatórios de erro."""
+    if request.method == "GET":
+        return jsonify({"ok": True, "restrictions": ler_logs_restricao(50)}), 200
+    try:
+        body = request.get_json(silent=True) or {}
+        action = str(body.get("action") or "").strip()
+        account_id = str(body.get("id") or "conta_1").strip()
+
+        if action == "clear":
+            limpar_quarentena_conta(account_id)
+            return jsonify({"ok": True, "message": f"Restrição/Timer de {account_id} removido."}), 200
+
+        if action == "set_cooldown":
+            minutos = max(1, int(body.get("minutes", 30)))
+            motivo = str(body.get("reason") or f"Pausa preventiva manual ({minutos} min)")
+            contas = load_whatsapp_accounts()
+            for c in contas:
+                if c.get("id") == account_id:
+                    c["restrito_ate"] = (datetime.now() + timedelta(minutes=minutos)).isoformat()
+                    c["motivo_restricao"] = motivo
+                    c["sugestao_restricao"] = "Aguarde o fim do timer de resfriamento ou faça aquecimento receptivo."
+                    c["nivel_risco"] = "MÉDIO"
+                    break
+            save_whatsapp_accounts(contas)
+            return jsonify({"ok": True}), 200
+
+        if action == "simulate_restriction":
+            reg = aplicar_quarentena_conta(
+                account_id,
+                str(body.get("code") or "HTTP_428"),
+                str(body.get("detail") or "Simulação de Queda de Socket / Rate Limit (Precondition Required)"),
+            )
+            return jsonify({"ok": True, "restriction": reg}), 200
+
+        return jsonify({"ok": False, "error": "Ação inválida"}), 400
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/leads/encaminhar", methods=["POST"])
+def api_encaminhar_lead_manual():
+    """Encaminha manualmente um lead para o consultor (pela Conta Principal Administradora ou chip ativo)."""
+    try:
+        body = request.get_json(silent=True) or {}
+        lead_phone = normalize_phone(str(body.get("phone") or ""))
+        lead_name = str(body.get("name") or "Cliente").strip()
+        lead_notes = str(body.get("notes") or "").strip()
+        custom_consultant = normalize_phone(str(body.get("consultant_phone") or ""))
+
+        if not lead_phone:
+            return jsonify({"ok": False, "error": "Telefone do lead inválido."}), 400
+
+        admin_acc = get_admin_account()
+        conta_origem = resolver_conta_whatsapp(str(body.get("conta_id") or ""))
+        destino_info = escolher_consultor_destino(conta_origem)
+        consultor_tel = custom_consultant or destino_info.get("telefone") or CONSULTANT_PHONE_NUMBER
+        consultor_nome = destino_info.get("nome", "Consultor")
+
+        wa_link = f"https://wa.me/{lead_phone}"
+        msg = (
+            f"🚀 *Lead Encaminhado pela Central (Admin)!*\n\n"
+            f"👤 *Lead:* {lead_name}\n"
+            f"📱 *WhatsApp:* +{lead_phone}\n"
+            f"🎯 *Consultor:* {consultor_nome}\n"
+            + (f"📝 *Obs:* {lead_notes}\n" if lead_notes else "")
+            + f"\n🔗 *Iniciar conversa:* {wa_link}"
+        )
+
+        # Tenta enviar via Conta Principal Administradora se estiver conectada
+        enviado_api = False
+        if consultor_tel:
+            canal = admin_acc if str(admin_acc.get("connection_status", "")).lower() == "open" else conta_origem
+            res_envio = send_whatsapp_text(consultor_tel, msg, account=canal)
+            enviado_api = bool(res_envio)
+
+        log_event(
+            "lead_forwarded",
+            lead_phone,
+            {
+                "lead_name": lead_name,
+                "consultant_name": consultor_nome,
+                "consultant_phone": consultor_tel,
+                "sent_via_api": enviado_api,
+            },
+        )
+        return jsonify({
+            "ok": True,
+            "sent_via_api": enviado_api,
+            "consultant_phone": consultor_tel,
+            "consultant_name": consultor_nome,
+            "wa_consultant_url": f"https://wa.me/{consultor_tel}?text={requests.utils.quote(msg)}" if consultor_tel else wa_link,
+            "wa_lead_url": wa_link,
+        }), 200
+    except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
 

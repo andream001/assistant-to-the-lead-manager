@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
-Disparador de Campanhas WhatsApp via Evolution API (Multi-Instância: até 5 chips simultâneos)
-Com normalização DDI +55, simulação de digitação ("Digitando..."), delay aleatório anti-ban (Jitter),
-balanceamento Round-Robin entre as 5 instâncias, persistência atômica no CSV (.tmp) e proteção anti-reenvio.
+Disparador de Campanhas WhatsApp via Evolution API (Enterprise: até 50 Chips Simultâneos + 1 Conta Admin)
+- Conta Principal Administradora (conta_admin): NUNCA prospecta, apenas administra e encaminha leads/alertas.
+- Pool de até 50 Chips de Prospecção (conta_1 a conta_50) com balanceamento Round-Robin.
+- Sistema de Quarentena / Cooldown com Timer Regressivo automático em caso de restrição/erro.
+- Log dedicado de erros e relatório de restrições com sugestões automáticas de mitigação.
+- Proteção dupla anti-reenvio: Cofre Permanente + consulta ao histórico real do chip (/chat/findMessages).
 """
 
 import argparse
@@ -12,15 +15,14 @@ import os
 import random
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import requests
 from dotenv import load_dotenv
 
-# Carrega variáveis do arquivo .env
 load_dotenv()
 
-MAX_WHATSAPP_ACCOUNTS = 5
+MAX_WHATSAPP_ACCOUNTS = 50
 
 # Configuração Global da Evolution API
 EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL", "http://localhost:8081").rstrip("/")
@@ -28,9 +30,9 @@ EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY", "lead_manager_evo_key_2026")
 WEBHOOK_INTERNAL_URL = os.getenv("WEBHOOK_INTERNAL_URL", "http://host.docker.internal:5000/webhook")
 
 # Campaign & Anti-Ban Settings
-DEFAULT_DELAY = float(os.getenv("DEFAULT_DELAY", 8.0))
-MIN_DELAY = float(os.getenv("MIN_DELAY", 6.0))
-MAX_DELAY = float(os.getenv("MAX_DELAY", 15.0))
+DEFAULT_DELAY = float(os.getenv("DEFAULT_DELAY", 15.0))
+MIN_DELAY = float(os.getenv("MIN_DELAY", 15.0))
+MAX_DELAY = float(os.getenv("MAX_DELAY", 35.0))
 TYPING_MS = int(os.getenv("TYPING_MS", 1200))
 DRY_RUN = os.getenv("DRY_RUN", "True").lower() == "true"
 DAILY_MESSAGE_LIMIT = int(os.getenv("DAILY_MESSAGE_LIMIT", 60))
@@ -43,6 +45,8 @@ _default_leads_rel = "data/leads.local.csv" if os.path.exists(os.path.join(BASE_
 LEADS_FILE = os.path.join(BASE_DIR, os.getenv("LEADS_FILE", _default_leads_rel))
 ACCOUNTS_FILE = os.path.join(BASE_DIR, os.getenv("ACCOUNTS_FILE", "data/whatsapp_accounts.json"))
 HISTORICO_ENVIADOS_FILE = os.path.join(BASE_DIR, "data/historico_enviados_permanente.txt")
+RESTRICTIONS_LOG_FILE = os.path.join(BASE_DIR, "data/restrictions_errors.log")
+ROUTING_CONFIG_FILE = os.path.join(BASE_DIR, "data/routing_config.json")
 
 MENSAGEM_PADRAO_PROSPECCAO = (
     "Olá, tudo bem? Atuo com consultoria de planos empresariais B2B.\n\n"
@@ -66,6 +70,14 @@ COLUNAS_PADRAO = [
     "ultima_resposta",
 ]
 
+SAUDACOES_VARIADAS = [
+    "Olá, tudo bem?",
+    "Oi, tudo bem?",
+    "Olá! Tudo bem por aí?",
+    "Oi! Tudo certo?",
+    "Olá, como vai?",
+]
+
 
 def normalize_phone(phone: str) -> str:
     """Remove caracteres não numéricos e garante o DDI 55 (Brasil) para telefones de 10 ou 11 dígitos."""
@@ -85,10 +97,278 @@ def phone_dedup_key(phone: str) -> str:
     return norm
 
 
+def is_business_hours() -> bool:
+    """Verifica se o horário atual está dentro da janela comercial configurada."""
+    now = datetime.now()
+    if BUSINESS_DAYS_ONLY and now.weekday() > 4:
+        return False
+    return BUSINESS_START_HOUR <= now.hour < BUSINESS_END_HOUR
+
+
+def formatar_mensagem_lead(template_msg: str, nome_lead: str = "", usar_variacao: bool = True) -> str:
+    """
+    Substitui variáveis {nome} e {primeiro_nome}, processa blocos Spintax {op1|op2}
+    e aplica micro-variação automática na saudação para evitar hash repetido (Anti-Ban).
+    """
+    texto = template_msg or MENSAGEM_PADRAO_PROSPECCAO
+    nome_limpo = (nome_lead or "").strip()
+    if nome_limpo.lower().startswith(("lead ", "contato ", "empresa ")) or not nome_limpo:
+        primeiro = "tudo bem"
+        completo = "Cliente"
+    else:
+        primeiro = nome_limpo.split()[0].capitalize()
+        completo = nome_limpo
+
+    texto = texto.replace("{primeiro_nome}", primeiro).replace("{nome}", completo)
+
+    def _resolver_spintax(match: re.Match) -> str:
+        opcoes = [op.strip() for op in match.group(1).split("|") if op.strip()]
+        return random.choice(opcoes) if opcoes else ""
+
+    texto = re.sub(r"\{([^{}]*\|[^{}]*)\}", _resolver_spintax, texto)
+
+    if usar_variacao and texto.startswith("Olá, tudo bem?"):
+        saudacao = random.choice(SAUDACOES_VARIADAS)
+        texto = saudacao + texto[len("Olá, tudo bem?"):]
+
+    return texto
+
+
+def diagnosticar_erro_e_sugerir(codigo_erro: str, detalhe: str = "", enviados_hoje: int = 0) -> Dict:
+    """
+    Analisa a falha/restrição ocorrida no chip, define o tempo ideal de Cooldown (Quarentena)
+    e gera uma recomendação clara e acionável para o operador.
+    """
+    det_lower = (detalhe or "").lower()
+    cod_lower = (codigo_erro or "").lower()
+
+    if "428" in cod_lower or "428" in det_lower or "precondition" in det_lower or "connection closed" in det_lower:
+        return {
+            "cooldown_minutos": 30,
+            "nivel_risco": "ALTO",
+            "titulo": "Queda de Sessão / Rate Limit de Socket (HTTP 428)",
+            "sugestao": (
+                "O WhatsApp fechou temporariamente a conexão por excesso de requisições seguidas. "
+                "Recomendação: Mantenha o chip em pausa até o fim do timer de 30 min, aumente o Jitter para 20s–45s "
+                "e envie lotes menores (máx. 5 a 10 por rodada)."
+            ),
+        }
+    if "401" in cod_lower or "403" in cod_lower or "logged out" in det_lower or "refused" in det_lower:
+        return {
+            "cooldown_minutos": 120,
+            "nivel_risco": "CRÍTICO",
+            "titulo": "Sessão Desconectada ou Restrição Temporária (401/403)",
+            "sugestao": (
+                "O aparelho desconectou ou sofreu restrição preventiva. "
+                "Recomendação: Verifique o WhatsApp no aparelho físico, aguarde o timer de 2h antes de reconectar o QR Code "
+                "e faça 5 conversas manuais entre seus próprios chips para aquecer (Warm-Up)."
+            ),
+        }
+    if "404" in cod_lower:
+        return {
+            "cooldown_minutos": 10,
+            "nivel_risco": "MÉDIO",
+            "titulo": "Instância Não Inicializada na Evolution API (HTTP 404)",
+            "sugestao": (
+                "Este chip está marcado como Ativo no pool, mas sua instância ainda não foi conectada via QR Code. "
+                "Recomendação: Clique em '📱 QR Code' no card deste chip para parear o aparelho ou deixe-o PAUSADO."
+            ),
+        }
+    if "500" in cod_lower or "internal server error" in det_lower:
+        return {
+            "cooldown_minutos": 20,
+            "nivel_risco": "ALTO",
+            "titulo": "Falha Interna de Envio Baileys (HTTP 500)",
+            "sugestao": (
+                "A instância não conseguiu entregar a mensagem (possível queda momentânea do socket ou número inválido). "
+                "Recomendação: Aguarde o cooldown automático de 20 min e clique em '📡 Sincronizar Status' para validar a sessão."
+            ),
+        }
+    return {
+        "cooldown_minutos": 15,
+        "nivel_risco": "MÉDIO",
+        "titulo": f"Alerta Operacional ({codigo_erro})",
+        "sugestao": (
+            "Falha de comunicação detectada. Recomendação: Verifique se o container Docker da Evolution API (porta 8081) "
+            "está ativo e mantenha o Jitter acima de 15 segundos."
+        ),
+    }
+
+
+def registrar_log_restricao(
+    account: Dict,
+    codigo_erro: str,
+    detalhe: str,
+    diagnostico: Dict,
+    telefone_alvo: str = "",
+) -> Dict:
+    """Registra evento de erro/restrição em data/restrictions_errors.log com diagnóstico e timer."""
+    os.makedirs(os.path.dirname(RESTRICTIONS_LOG_FILE) or ".", exist_ok=True)
+    agora = datetime.now()
+    expira_em = (agora + timedelta(minutes=int(diagnostico.get("cooldown_minutos", 15)))).isoformat()
+    registro = {
+        "timestamp": agora.isoformat(),
+        "account_id": account.get("id", "conta_1"),
+        "slot": account.get("slot", 1),
+        "account_name": account.get("nome", ""),
+        "instance_name": account.get("instance_name", ""),
+        "target_phone": normalize_phone(telefone_alvo),
+        "error_code": codigo_erro,
+        "detail": (detalhe or "")[:240],
+        "risk_level": diagnostico.get("nivel_risco", "MÉDIO"),
+        "title": diagnostico.get("titulo", codigo_erro),
+        "suggestion": diagnostico.get("sugestao", ""),
+        "cooldown_minutes": diagnostico.get("cooldown_minutos", 15),
+        "cooldown_until": expira_em,
+    }
+    try:
+        with open(RESTRICTIONS_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(registro, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+    return registro
+
+
+def ler_logs_restricao(limit: int = 40) -> List[Dict]:
+    """Lê os últimos registros de restrição e erros do arquivo data/restrictions_errors.log."""
+    if not os.path.exists(RESTRICTIONS_LOG_FILE):
+        return []
+    saida: List[Dict] = []
+    try:
+        with open(RESTRICTIONS_LOG_FILE, "r", encoding="utf-8", errors="replace") as f:
+            linhas = f.readlines()[-limit:]
+            for ln in reversed(linhas):
+                ln = ln.strip()
+                if ln:
+                    try:
+                        saida.append(json.loads(ln))
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+    return saida
+
+
+def aplicar_quarentena_conta(account_id: str, codigo_erro: str, detalhe: str = "", telefone_alvo: str = "") -> Dict:
+    """Coloca um chip em quarentena com timer regressivo e salva a sugestão de mitigação."""
+    contas = load_whatsapp_accounts()
+    diag = {}
+    reg = {}
+    for c in contas:
+        if c.get("id") == account_id or c.get("instance_name") == account_id:
+            diag = diagnosticar_erro_e_sugerir(codigo_erro, detalhe, int(c.get("enviados_hoje", 0)))
+            ate = (datetime.now() + timedelta(minutes=int(diag["cooldown_minutos"]))).isoformat()
+            c["restrito_ate"] = ate
+            c["motivo_restricao"] = diag["titulo"]
+            c["sugestao_restricao"] = diag["sugestao"]
+            c["nivel_risco"] = diag["nivel_risco"]
+            c["erros_hoje"] = int(c.get("erros_hoje", 0)) + 1
+            c["ultimo_erro_em"] = datetime.now().isoformat()
+            c["ultimo_erro_detalhe"] = (detalhe or codigo_erro)[:180]
+            reg = registrar_log_restricao(c, codigo_erro, detalhe, diag, telefone_alvo)
+            break
+    save_whatsapp_accounts(contas)
+    return reg
+
+
+def limpar_quarentena_conta(account_id: str) -> None:
+    """Remove manualmente o timer de restrição de um chip e o reabilita."""
+    contas = load_whatsapp_accounts()
+    for c in contas:
+        if c.get("id") == account_id:
+            c["restrito_ate"] = ""
+            c["motivo_restricao"] = ""
+            c["sugestao_restricao"] = ""
+            c["nivel_risco"] = "BAIXO"
+            break
+    save_whatsapp_accounts(contas)
+
+
+def conta_em_quarentena(account: Dict) -> int:
+    """Retorna quantos segundos restam de quarentena/restrição para o chip (0 se estiver livre)."""
+    ate_str = str(account.get("restrito_ate") or "").strip()
+    if not ate_str:
+        return 0
+    try:
+        dt_ate = datetime.fromisoformat(ate_str)
+        restante = int((dt_ate - datetime.now()).total_seconds())
+        return max(0, restante)
+    except Exception:
+        return 0
+
+
+def load_routing_config() -> Dict:
+    """Carrega as configurações de encaminhamento de leads e da Conta Principal Administradora."""
+    padrao = {
+        "modo_encaminhamento": "fixo_por_chip",  # 'fixo_por_chip' | 'round_robin_consultores' | 'webhook_crm' | 'apenas_painel'
+        "usar_conta_admin_para_alertas": True,
+        "notificar_restricoes_no_admin": True,
+        "som_notificacao_ativo": True,
+        "consultor_padrao": normalize_phone(os.getenv("CONSULTANT_PHONE_NUMBER", "")),
+        "fila_consultores": [
+            {"nome": "Consultor Principal", "telefone": normalize_phone(os.getenv("CONSULTANT_PHONE_NUMBER", "")), "ativo": True, "recebidos": 0}
+        ],
+        "rr_consultor_idx": 0,
+        "webhook_crm_url": os.getenv("CRM_WEBHOOK_URL", ""),
+    }
+    if not os.path.exists(ROUTING_CONFIG_FILE):
+        save_routing_config(padrao)
+        return padrao
+    try:
+        with open(ROUTING_CONFIG_FILE, "r", encoding="utf-8") as f:
+            salvo = json.load(f)
+        if isinstance(salvo, dict):
+            padrao.update(salvo)
+        return padrao
+    except Exception:
+        return padrao
+
+
+def save_routing_config(cfg: Dict) -> None:
+    """Salva a configuração de encaminhamento em data/routing_config.json."""
+    os.makedirs(os.path.dirname(ROUTING_CONFIG_FILE) or ".", exist_ok=True)
+    tmp = f"{ROUTING_CONFIG_FILE}.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, ROUTING_CONFIG_FILE)
+
+
+def escolher_consultor_destino(conta_origem: Dict) -> Dict:
+    """
+    Determina para qual consultor o lead quente deve ser encaminhado segundo a regra ativa:
+    - 'fixo_por_chip': usa o consultant_phone do chip (ou consultor_padrao).
+    - 'round_robin_consultores': alterna entre a lista de consultores ativos cadastrados.
+    """
+    cfg = load_routing_config()
+    modo = cfg.get("modo_encaminhamento", "fixo_por_chip")
+
+    if modo == "round_robin_consultores":
+        fila = [c for c in (cfg.get("fila_consultores") or []) if c.get("ativo") and normalize_phone(c.get("telefone", ""))]
+        if fila:
+            idx = int(cfg.get("rr_consultor_idx", 0)) % len(fila)
+            escolhido = fila[idx]
+            escolhido["recebidos"] = int(escolhido.get("recebidos", 0)) + 1
+            cfg["rr_consultor_idx"] = idx + 1
+            save_routing_config(cfg)
+            return {
+                "nome": escolhido.get("nome", "Consultor"),
+                "telefone": normalize_phone(escolhido.get("telefone", "")),
+                "modo": "round_robin_consultores",
+            }
+
+    tel_chip = normalize_phone(conta_origem.get("consultant_phone", ""))
+    tel_padrao = normalize_phone(cfg.get("consultor_padrao", "") or os.getenv("CONSULTANT_PHONE_NUMBER", ""))
+    return {
+        "nome": f"Consultor ({conta_origem.get('nome', 'Chip')})",
+        "telefone": tel_chip or tel_padrao,
+        "modo": modo,
+    }
+
+
 def carregar_historico_permanente() -> set:
     """
     Carrega o cofre permanente de números que já receberam mensagens (ou já interagiram),
-    cruzando data/historico_enviados_permanente.txt, data/events.log e o CSV atual.
+    cruzando data/historico_enviados_permanente.txt e data/events.log.
     """
     chaves = set()
     os.makedirs(os.path.dirname(HISTORICO_ENVIADOS_FILE) or ".", exist_ok=True)
@@ -102,7 +382,6 @@ def carregar_historico_permanente() -> set:
         except Exception:
             pass
 
-    # Cruza também com events.log para garantir que nenhum envio anterior seja esquecido
     events_path = os.path.join(BASE_DIR, "data/events.log")
     if os.path.exists(events_path):
         try:
@@ -131,110 +410,43 @@ def registrar_historico_permanente(phone: str) -> None:
             f.write(f"{chave}\n")
 
 
-def evolution_ja_tem_conversa_no_chip(account: Dict, formatted_number: str) -> bool:
-    """
-    Consulta diretamente a Evolution API (/chat/findMessages/{instance}) para verificar
-    se este chip JÁ conversou ou JÁ enviou mensagem para este número anteriormente no aparelho.
-    Checa tanto a versão com 9º dígito quanto sem 9º dígito!
-    """
-    inst = account.get("instance_name") or f"chip_{account.get('slot', 1)}"
-    base = _evo_base_url()
-    headers = _evo_headers(account)
-
-    variantes = {formatted_number}
-    if len(formatted_number) == 13 and formatted_number.startswith("55") and formatted_number[4] == "9":
-        # Versão sem o 9º dígito (12 dígitos)
-        variantes.add(formatted_number[:4] + formatted_number[5:])
-    elif len(formatted_number) == 12 and formatted_number.startswith("55"):
-        # Versão com o 9º dígito (13 dígitos)
-        variantes.add(formatted_number[:4] + "9" + formatted_number[4:])
-
-    for num_var in variantes:
-        jid = f"{num_var}@s.whatsapp.net"
-        try:
-            resp = requests.post(
-                f"{base}/chat/findMessages/{inst}",
-                headers=headers,
-                json={"where": {"key": {"remoteJid": jid}}, "limit": 1},
-                timeout=4,
-            )
-            if resp.ok and resp.content:
-                data = resp.json()
-                # Evolution v2 retorna {"messages": {"records": [...], "total": N}} ou lista
-                if isinstance(data, dict):
-                    msgs_obj = data.get("messages")
-                    if isinstance(msgs_obj, dict):
-                        recs = msgs_obj.get("records") or []
-                        total = int(msgs_obj.get("total") or len(recs))
-                        if total > 0 or len(recs) > 0:
-                            return True
-                    elif isinstance(msgs_obj, list) and len(msgs_obj) > 0:
-                        return True
-                elif isinstance(data, list) and len(data) > 0:
-                    return True
-        except Exception:
-            pass
-    return False
-
-
-def is_business_hours() -> bool:
-    """Verifica se o horário atual está dentro da janela comercial configurada."""
-    now = datetime.now()
-    if BUSINESS_DAYS_ONLY and now.weekday() > 4:  # 0 = Segunda, 6 = Domingo
-        return False
-    return BUSINESS_START_HOUR <= now.hour < BUSINESS_END_HOUR
-
-
-SAUDACOES_VARIADAS = [
-    "Olá, tudo bem?",
-    "Oi, tudo bem?",
-    "Olá! Tudo bem por aí?",
-    "Oi! Tudo certo?",
-    "Olá, como vai?",
-]
-
-
-def formatar_mensagem_lead(template_msg: str, nome_lead: str = "", usar_variacao: bool = True) -> str:
-    """
-    Substitui variáveis {nome} e {primeiro_nome}, processa blocos Spintax {op1|op2}
-    e aplica micro-variação automática na saudação para evitar hash repetido (Anti-Ban).
-    """
-    texto = template_msg or MENSAGEM_PADRAO_PROSPECCAO
-    nome_limpo = (nome_lead or "").strip()
-    if nome_limpo.lower().startswith(("lead ", "contato ", "empresa ")) or not nome_limpo:
-        primeiro = "tudo bem"
-        completo = "Cliente"
-    else:
-        primeiro = nome_limpo.split()[0].capitalize()
-        completo = nome_limpo
-
-    texto = texto.replace("{primeiro_nome}", primeiro).replace("{nome}", completo)
-
-    # Processa Spintax do tipo {Olá|Oi|Bom dia}
-    def _resolver_spintax(match: re.Match) -> str:
-        opcoes = [op.strip() for op in match.group(1).split("|") if op.strip()]
-        return random.choice(opcoes) if opcoes else ""
-
-    texto = re.sub(r"\{([^{}]*\|[^{}]*)\}", _resolver_spintax, texto)
-
-    # Se o texto começar com "Olá, tudo bem?", alterna automaticamente entre saudações humanas
-    if usar_variacao and texto.startswith("Olá, tudo bem?"):
-        saudacao = random.choice(SAUDACOES_VARIADAS)
-        texto = saudacao + texto[len("Olá, tudo bem?"):]
-
-    return texto
+def _default_admin_account() -> Dict:
+    """Cria a estrutura da Conta Principal Administradora (Não Prospecta, Apenas Administra)."""
+    hoje = datetime.now().strftime("%Y-%m-%d")
+    return {
+        "id": "conta_admin",
+        "slot": 0,
+        "role": "admin",
+        "admin_only": True,
+        "nome": "👑 Conta Principal Administradora (Não Prospecta)",
+        "instance_name": os.getenv("WHATSAPP_ADMIN_INSTANCE", "chip_admin"),
+        "ativo": False,  # Nunca entra no pool de prospecção fria!
+        "connection_status": "close",
+        "telefone_exibicao": normalize_phone(os.getenv("WHATSAPP_ADMIN_PHONE", "")),
+        "consultant_phone": normalize_phone(os.getenv("CONSULTANT_PHONE_NUMBER", "")),
+        "apikey": "",
+        "daily_limit": 500,
+        "enviados_hoje": 0,
+        "erros_hoje": 0,
+        "data_contagem": hoje,
+        "ultimo_disparo_em": "",
+        "restrito_ate": "",
+        "motivo_restricao": "",
+        "sugestao_restricao": "",
+        "nivel_risco": "BAIXO",
+    }
 
 
 def _default_accounts() -> List[Dict]:
-    """Gera a estrutura padrão das 5 instâncias simultâneas da Evolution API."""
+    """Gera a Conta Principal Administradora (slot 0) + as 50 instâncias de prospecção (slots 1 a 50)."""
     hoje = datetime.now().strftime("%Y-%m-%d")
-    contas: List[Dict] = []
+    contas: List[Dict] = [_default_admin_account()]
     for idx in range(1, MAX_WHATSAPP_ACCOUNTS + 1):
         prefix = f"WHATSAPP_ACCOUNT_{idx}_"
         instance_name = os.getenv(f"{prefix}INSTANCE", f"chip_{idx}")
         consultant = os.getenv(f"{prefix}CONSULTANT_PHONE") or os.getenv("CONSULTANT_PHONE_NUMBER", "")
         display_phone = os.getenv(f"{prefix}DISPLAY_PHONE", "")
-        nome = os.getenv(f"{prefix}NAME", f"Chip WhatsApp #{idx}" + (" (Principal)" if idx == 1 else ""))
+        nome = os.getenv(f"{prefix}NAME", f"Chip #{idx}" + (" (Líder Pool)" if idx == 1 else ""))
         limit = int(os.getenv(f"{prefix}DAILY_LIMIT", str(DAILY_MESSAGE_LIMIT)))
         instance_token = os.getenv(f"{prefix}API_KEY", "")
         ativo_env = os.getenv(f"{prefix}ACTIVE")
@@ -246,6 +458,8 @@ def _default_accounts() -> List[Dict]:
         contas.append({
             "id": f"conta_{idx}",
             "slot": idx,
+            "role": "prospeccao",
+            "admin_only": False,
             "nome": nome,
             "instance_name": instance_name,
             "ativo": ativo,
@@ -255,14 +469,19 @@ def _default_accounts() -> List[Dict]:
             "apikey": instance_token,
             "daily_limit": limit,
             "enviados_hoje": 0,
+            "erros_hoje": 0,
             "data_contagem": hoje,
             "ultimo_disparo_em": "",
+            "restrito_ate": "",
+            "motivo_restricao": "",
+            "sugestao_restricao": "",
+            "nivel_risco": "BAIXO",
         })
     return contas
 
 
 def load_whatsapp_accounts() -> List[Dict]:
-    """Carrega as 5 instâncias do WhatsApp a partir de data/whatsapp_accounts.json."""
+    """Carrega a Conta Admin (slot 0) + os 50 chips de prospecção (slots 1..50)."""
     hoje = datetime.now().strftime("%Y-%m-%d")
     padrao = _default_accounts()
 
@@ -276,7 +495,7 @@ def load_whatsapp_accounts() -> List[Dict]:
         if not isinstance(salvas, list):
             return padrao
 
-        mapa_salvas = {str(c.get("id") or f"conta_{c.get('slot', i+1)}"): c for i, c in enumerate(salvas)}
+        mapa_salvas = {str(c.get("id") or f"conta_{c.get('slot', i)}"): c for i, c in enumerate(salvas)}
         resultado: List[Dict] = []
         for item_padrao in padrao:
             cid = item_padrao["id"]
@@ -286,29 +505,49 @@ def load_whatsapp_accounts() -> List[Dict]:
                 merged.update(mapa_salvas[cid])
                 merged["id"] = cid
                 merged["slot"] = slot
-                if not merged.get("instance_name"):
-                    merged["instance_name"] = f"chip_{slot}"
-                if str(merged.get("nome", "")).startswith("Conta WhatsApp #"):
-                    merged["nome"] = merged["nome"].replace("Conta WhatsApp #", "Chip WhatsApp #")
+                if cid == "conta_admin":
+                    merged["role"] = "admin"
+                    merged["admin_only"] = True
+                    merged["ativo"] = False  # Garante que conta_admin NUNCA prospecta!
+                    if not merged.get("instance_name"):
+                        merged["instance_name"] = "chip_admin"
+                else:
+                    merged["role"] = "prospeccao"
+                    merged["admin_only"] = False
+                    if not merged.get("instance_name"):
+                        merged["instance_name"] = f"chip_{slot}"
                 if merged.get("data_contagem") != hoje:
                     merged["enviados_hoje"] = 0
+                    merged["erros_hoje"] = 0
                     merged["data_contagem"] = hoje
                 resultado.append(merged)
             else:
                 resultado.append(item_padrao)
-        return resultado[:MAX_WHATSAPP_ACCOUNTS]
+        return resultado[: MAX_WHATSAPP_ACCOUNTS + 1]
     except Exception:
         return padrao
 
 
 def save_whatsapp_accounts(accounts: List[Dict]) -> None:
-    """Salva as até 5 instâncias simultâneas de forma atômica em data/whatsapp_accounts.json."""
+    """Salva a Conta Admin + até 50 instâncias de prospecção em data/whatsapp_accounts.json."""
     os.makedirs(os.path.dirname(ACCOUNTS_FILE) or ".", exist_ok=True)
-    normalizadas = accounts[:MAX_WHATSAPP_ACCOUNTS]
+    normalizadas = accounts[: MAX_WHATSAPP_ACCOUNTS + 1]
+    for c in normalizadas:
+        if c.get("id") == "conta_admin" or c.get("admin_only"):
+            c["ativo"] = False  # Conta Admin jamais entra em prospecção ativa
     temp_file = f"{ACCOUNTS_FILE}.tmp"
     with open(temp_file, "w", encoding="utf-8") as f:
         json.dump(normalizadas, f, ensure_ascii=False, indent=2)
     os.replace(temp_file, ACCOUNTS_FILE)
+
+
+def get_admin_account() -> Dict:
+    """Retorna especificamente a Conta Principal Administradora (conta_admin)."""
+    todas = load_whatsapp_accounts()
+    for c in todas:
+        if c.get("id") == "conta_admin" or c.get("admin_only"):
+            return c
+    return _default_admin_account()
 
 
 def _evo_headers(account: Optional[Dict] = None) -> Dict[str, str]:
@@ -328,7 +567,7 @@ def _evo_base_url() -> str:
 
 def evolution_check_connection(account: Dict) -> Dict:
     """Consulta o status real da instância na Evolution API (/instance/connectionState/{instance})."""
-    inst = account.get("instance_name") or f"chip_{account.get('slot', 1)}"
+    inst = account.get("instance_name") or ("chip_admin" if account.get("id") == "conta_admin" else f"chip_{account.get('slot', 1)}")
     base = _evo_base_url()
     try:
         resp = requests.get(
@@ -349,6 +588,48 @@ def evolution_check_connection(account: Dict) -> Dict:
         return {"ok": False, "online": True, "state": "error", "http_status": resp.status_code}
     except Exception as e:
         return {"ok": False, "online": False, "state": "evolution_offline", "error": str(e)}
+
+
+def evolution_ja_tem_conversa_no_chip(account: Dict, formatted_number: str) -> bool:
+    """
+    Consulta diretamente a Evolution API (/chat/findMessages/{instance}) para verificar
+    se este chip JÁ conversou ou JÁ enviou mensagem para este número anteriormente no aparelho.
+    """
+    inst = account.get("instance_name") or f"chip_{account.get('slot', 1)}"
+    base = _evo_base_url()
+    headers = _evo_headers(account)
+
+    variantes = {formatted_number}
+    if len(formatted_number) == 13 and formatted_number.startswith("55") and formatted_number[4] == "9":
+        variantes.add(formatted_number[:4] + formatted_number[5:])
+    elif len(formatted_number) == 12 and formatted_number.startswith("55"):
+        variantes.add(formatted_number[:4] + "9" + formatted_number[4:])
+
+    for num_var in variantes:
+        jid = f"{num_var}@s.whatsapp.net"
+        try:
+            resp = requests.post(
+                f"{base}/chat/findMessages/{inst}",
+                headers=headers,
+                json={"where": {"key": {"remoteJid": jid}}, "limit": 1},
+                timeout=4,
+            )
+            if resp.ok and resp.content:
+                data = resp.json()
+                if isinstance(data, dict):
+                    msgs_obj = data.get("messages")
+                    if isinstance(msgs_obj, dict):
+                        recs = msgs_obj.get("records") or []
+                        total = int(msgs_obj.get("total") or len(recs))
+                        if total > 0 or len(recs) > 0:
+                            return True
+                    elif isinstance(msgs_obj, list) and len(msgs_obj) > 0:
+                        return True
+                elif isinstance(data, list) and len(data) > 0:
+                    return True
+        except Exception:
+            pass
+    return False
 
 
 def _create_fresh_evolution_instance(base: str, inst: str, headers: Dict[str, str], account: Dict) -> Dict:
@@ -391,7 +672,6 @@ def _create_fresh_evolution_instance(base: str, inst: str, headers: Dict[str, st
         else data.get("pairingCode") or ""
     )
 
-    # Aguarda o Baileys gerar o QR Code (até 5 tentativas de 1s)
     for _ in range(5):
         if qr_base64:
             break
@@ -415,15 +695,13 @@ def evolution_create_or_connect_instance(account: Dict) -> Dict:
     """
     Verifica o estado real da instância na Evolution API v2:
     - Se já estiver 'open' (conectada), informa que está conectada.
-    - Se não existir ou se o QR Code anterior tiver expirado ('close' / sem base64), recria a instância
-      automaticamente para sempre devolver um QR Code Base64 fresquinho na tela.
+    - Se não existir ou se o QR Code anterior tiver expirado, recria a instância automaticamente.
     """
-    inst = account.get("instance_name") or f"chip_{account.get('slot', 1)}"
+    inst = account.get("instance_name") or ("chip_admin" if account.get("id") == "conta_admin" else f"chip_{account.get('slot', 1)}")
     base = _evo_base_url()
     headers = _evo_headers(account)
 
     try:
-        # 1. Consulta o estado real (/instance/connectionState/{inst})
         status_check = evolution_check_connection(account)
         if not status_check.get("online"):
             return {
@@ -449,7 +727,6 @@ def evolution_create_or_connect_instance(account: Dict) -> Dict:
         if real_state == "not_created":
             return _create_fresh_evolution_instance(base, inst, headers, account)
 
-        # 2. Se a instância existe mas não está 'open', tenta obter o QR Code atual
         connect_resp = requests.get(f"{base}/instance/connect/{inst}", headers=headers, timeout=8)
         if connect_resp.ok and connect_resp.content:
             cdata = connect_resp.json() or {}
@@ -464,17 +741,13 @@ def evolution_create_or_connect_instance(account: Dict) -> Dict:
                     "state": "connecting",
                 }
 
-        # 3. Se não veio QR Code (ex: QR Code anterior expirou após 30s ou sofreu logout), recria a instância!
         return _create_fresh_evolution_instance(base, inst, headers, account)
     except Exception as e:
         return {
             "ok": False,
             "online": False,
             "instance": inst,
-            "error": (
-                f"Evolution API não encontrada em {base}. "
-                "Suba o container com: docker compose -f docker-compose.evolution.yml up -d"
-            ),
+            "error": f"Evolution API offline em {base}.",
             "details": str(e),
         }
 
@@ -492,11 +765,16 @@ def evolution_logout_instance(account: Dict) -> Dict:
 
 def get_active_accounts(selected_account_id: str = "todas_ativas", dry_run: bool = True) -> List[Dict]:
     """
-    Retorna a lista de instâncias da Evolution API aptas para envio (entre as 5 contas suportadas).
-    - Se selected_account_id for 'conta_1'..'conta_5' (ou 'chip_1'..'chip_5'), retorna aquela instância.
-    - Se for 'todas_ativas' (ou 'all'), retorna todas as instâncias marcadas como ativo=True.
+    Retorna a lista de instâncias da Evolution API aptas para PROSPECÇÃO (entre os 50 chips).
+    - NUNCA inclui a 'conta_admin' (pois ela apenas administra e encaminha leads!).
+    - NUNCA inclui chips que estejam com Timer de Restrição / Quarentena ativo (conta_em_quarentena > 0).
+    - Em modo LIVE (dry_run=False), exige que a instância esteja com sessão 'open' na Evolution API.
     """
-    todas = load_whatsapp_accounts()
+    todas = [
+        c for c in load_whatsapp_accounts()
+        if not c.get("admin_only") and c.get("id") != "conta_admin"
+    ]
+
     if selected_account_id and selected_account_id not in ("todas_ativas", "all", "todas"):
         filtradas = [
             c for c in todas
@@ -507,11 +785,10 @@ def get_active_accounts(selected_account_id: str = "todas_ativas", dry_run: bool
     else:
         filtradas = [c for c in todas if c.get("ativo", False)]
 
-    if not filtradas and todas:
-        filtradas = [todas[0]]
+    # Remove chips em quarentena/cooldown ativo
+    filtradas = [c for c in filtradas if conta_em_quarentena(c) == 0]
 
     if not dry_run:
-        # CRÍTICO ANTI-BAN: Em modo LIVE, utiliza APENAS instâncias que estejam realmente conectadas ('open') na Evolution API!
         conectadas = []
         for c in filtradas:
             if not str(c.get("instance_name", "")).strip():
@@ -531,6 +808,7 @@ def registrar_disparo_conta(account_id: str) -> None:
         if c.get("id") == account_id or c.get("instance_name") == account_id:
             if c.get("data_contagem") != hoje:
                 c["enviados_hoje"] = 0
+                c["erros_hoje"] = 0
                 c["data_contagem"] = hoje
             c["enviados_hoje"] = int(c.get("enviados_hoje", 0)) + 1
             c["ultimo_disparo_em"] = datetime.now().isoformat()
@@ -540,8 +818,7 @@ def registrar_disparo_conta(account_id: str) -> None:
 
 def resolver_conta_whatsapp(account_id_or_instance: Optional[str] = None) -> Dict:
     """
-    Localiza uma das 5 contas pelo id ('conta_1'..'conta_5'), pelo nome da instância na Evolution API
-    ('chip_1'..'chip_5'), ou pelo telefone_exibicao. Se não encontrar, retorna a primeira ativa.
+    Localiza qualquer conta (incluindo conta_admin ou conta_1..conta_50) pelo id, slot ou instance_name.
     """
     contas = load_whatsapp_accounts()
     chave = str(account_id_or_instance or "").strip()
@@ -554,8 +831,9 @@ def resolver_conta_whatsapp(account_id_or_instance: Optional[str] = None) -> Dic
                 or (c.get("telefone_exibicao") and normalize_phone(c.get("telefone_exibicao", "")) == normalize_phone(chave))
             ):
                 return c
-    ativas = [c for c in contas if c.get("ativo")]
-    return ativas[0] if ativas else contas[0]
+    prospeccao = [c for c in contas if not c.get("admin_only") and c.get("id") != "conta_admin"]
+    ativas = [c for c in prospeccao if c.get("ativo")]
+    return ativas[0] if ativas else (prospeccao[0] if prospeccao else contas[0])
 
 
 def send_whatsapp_message(
@@ -570,26 +848,38 @@ def send_whatsapp_message(
     lead_name: str = "",
 ) -> Optional[Dict]:
     """
-    Envia mensagem de texto via Evolution API (/message/sendText/{instance})
-    com simulação humana de digitação ('composing') ou simula em modo DRY-RUN.
+    Envia mensagem de prospecção via Evolution API (/message/sendText/{instance}).
+    Bloqueia automaticamente caso a conta seja 'conta_admin' (que não pode prospectar!).
     """
     formatted_number = normalize_phone(to_number)
     if not formatted_number:
-        print(f"Skipping invalid phone number: '{to_number}'")
         return None
 
     if not dry_run and not force_outside_hours and not is_business_hours():
-        print(f"Skipping message to {formatted_number}: outside business hours.")
         return None
 
     conta_ativa = account or resolver_conta_whatsapp()
+    if conta_ativa.get("admin_only") or conta_ativa.get("id") == "conta_admin":
+        print("[PROTEÇÃO ADMIN] A Conta Principal Administradora não realiza prospecção ativa!")
+        return {"error": "admin_account_cannot_prospect", "fatal_connection": False}
+
     conta_id = conta_ativa.get("id", "conta_1")
     conta_nome = conta_ativa.get("nome", conta_id)
     instance_name = conta_ativa.get("instance_name") or f"chip_{conta_ativa.get('slot', 1)}"
 
+    # Verifica se o chip está em Quarentena / Cooldown
+    seg_restantes = conta_em_quarentena(conta_ativa)
+    if seg_restantes > 0:
+        return {
+            "error": "chip_em_quarentena",
+            "cooldown_seconds": seg_restantes,
+            "fatal_connection": True,
+            "account_id": conta_id,
+            "instance_name": instance_name,
+        }
+
     # TRAVA 1: Verifica no Cofre Permanente Anti-Reenvio (DDD + 8 dígitos)
     if phone_dedup_key(formatted_number) in carregar_historico_permanente():
-        print(f"[ANTI-REENVIO] Número {formatted_number} já consta no histórico permanente de enviados. Pulando!")
         return {
             "error": "ja_enviado_historico",
             "fatal_connection": False,
@@ -599,7 +889,6 @@ def send_whatsapp_message(
 
     # TRAVA 2: Em modo Real (LIVE), pergunta ao próprio chip na Evolution API se já existe conversa com esse número!
     if not dry_run and evolution_ja_tem_conversa_no_chip(conta_ativa, formatted_number):
-        print(f"[ANTI-REENVIO][Evolution:{instance_name}] Número {formatted_number} JÁ possui conversa no aparelho! Pulando para não repetir.")
         registrar_historico_permanente(formatted_number)
         return {
             "error": "ja_conversado_no_chip",
@@ -611,8 +900,6 @@ def send_whatsapp_message(
     texto_final = formatar_mensagem_lead(message_body or MENSAGEM_PADRAO_PROSPECCAO, lead_name)
 
     if dry_run:
-        resumo = texto_final.splitlines()[0] if texto_final else ""
-        print(f"[DRY-RUN][Evolution:{instance_name} ({conta_id})] Sending to {formatted_number}: {resumo}")
         return {
             "messages": [{"id": f"evo_dry_{instance_name}_{int(time.time() * 1000)}"}],
             "account_id": conta_id,
@@ -624,7 +911,6 @@ def send_whatsapp_message(
     url = f"{base}/message/sendText/{instance_name}"
     headers = _evo_headers(conta_ativa)
 
-    # Payload nativo Evolution API v2
     payload = {
         "number": formatted_number,
         "text": texto_final,
@@ -635,7 +921,6 @@ def send_whatsapp_message(
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=20)
         if response.status_code == 400 and ("exists" in response.text.lower() or "not found" in response.text.lower()):
-            print(f"[Evolution:{instance_name}] Número sem WhatsApp ativo ({formatted_number}). Marcando para pular.")
             return {
                 "error": "sem_whatsapp",
                 "fatal_connection": False,
@@ -644,10 +929,11 @@ def send_whatsapp_message(
             }
         if response.status_code >= 400:
             detalhe = response.text[:200] if response.text else f"HTTP {response.status_code}"
-            print(f"[CIRCUIT-BREAKER][Evolution:{instance_name}] Falha HTTP {response.status_code} ao enviar para {formatted_number}: {detalhe}")
+            reg_restricao = aplicar_quarentena_conta(conta_id, f"HTTP_{response.status_code}", detalhe, formatted_number)
             return {
                 "error": f"http_{response.status_code}",
                 "detail": detalhe,
+                "restriction_info": reg_restricao,
                 "fatal_connection": True,
                 "account_id": conta_id,
                 "instance_name": instance_name,
@@ -667,10 +953,11 @@ def send_whatsapp_message(
             "raw": data,
         }
     except requests.exceptions.RequestException as e:
-        print(f"[CIRCUIT-BREAKER] Erro de conexão com Evolution API [{instance_name}] para {formatted_number}: {e}")
+        reg_restricao = aplicar_quarentena_conta(conta_id, "CONNECTION_ERROR", str(e), formatted_number)
         return {
             "error": "connection_exception",
             "detail": str(e),
+            "restriction_info": reg_restricao,
             "fatal_connection": True,
             "account_id": conta_id,
             "instance_name": instance_name,
@@ -709,6 +996,7 @@ def update_lead_status(
         reader = csv.DictReader(f)
         fieldnames = list(reader.fieldnames or COLUNAS_PADRAO)
         for row in reader:
+            row.pop(None, None)
             if str(row.get("id")) == str(lead_id):
                 row["status"] = status
                 row["telefone"] = normalize_phone(row.get("telefone", ""))
@@ -727,15 +1015,15 @@ def update_lead_status(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Disparador Multi-Instância Evolution API (Até 5 chips simultâneos)")
+    parser = argparse.ArgumentParser(description="Disparador Multi-Instância Evolution API (Até 50 chips simultâneos)")
     parser.add_argument("--dry-run", action="store_true", help="Executa em modo simulação sem chamar a Evolution API real")
-    parser.add_argument("--limit", type=int, default=DAILY_MESSAGE_LIMIT, help="Limite total de envios nesta execução")
+    parser.add_argument("--limit", type=int, default=5, help="Limite total de envios nesta execução")
     parser.add_argument("--force-hours", action="store_true", help="Ignora trava de horário comercial")
     parser.add_argument(
         "--account",
         type=str,
         default="todas_ativas",
-        help="ID da conta ('conta_1'..'conta_5' / 'chip_1'..'chip_5') ou 'todas_ativas' para Round-Robin",
+        help="ID da conta ('conta_1'..'conta_50') ou 'todas_ativas' para Round-Robin",
     )
     args = parser.parse_args()
 
@@ -744,7 +1032,7 @@ def main() -> None:
 
     contas_disponiveis = get_active_accounts(args.account, dry_run=modo_simulacao)
     if not contas_disponiveis:
-        print("Error: Nenhuma instância Evolution API ativa. Ative ao menos 1 instância no painel web.")
+        print("Error: Nenhuma instância de prospecção ativa/conectada disponível.")
         return
 
     if not os.path.exists(LEADS_FILE):
@@ -756,30 +1044,22 @@ def main() -> None:
         reader = csv.DictReader(f)
         fieldnames = list(reader.fieldnames or COLUNAS_PADRAO)
         for row in reader:
+            row.pop(None, None)
             row["telefone"] = normalize_phone(row.get("telefone", ""))
             leads.append(row)
 
     sent_count = 0
-    skipped_already_sent = 0
-    skipped_opt_out = 0
+    attempts = 0
     por_conta: Dict[str, int] = {c["id"]: 0 for c in contas_disponiveis}
     rr_idx = 0
 
     for lead in leads:
-        if sent_count >= limite_execucao:
-            print(f"Message limit of {limite_execucao} reached. Stopping.")
+        if sent_count >= limite_execucao or attempts >= limite_execucao or not contas_disponiveis:
             break
 
         opt_out_val = str(lead.get("opt_out", "false")).strip().lower()
-        bloqueado_val = str(lead.get("bloqueado_para_envio", "false")).strip().lower()
         status_atual = str(lead.get("status", "novo")).strip().lower()
-
-        if opt_out_val == "true" or bloqueado_val == "true" or status_atual == "opt_out":
-            skipped_opt_out += 1
-            continue
-
-        if status_atual not in ("novo", "", "pendente"):
-            skipped_already_sent += 1
+        if opt_out_val == "true" or status_atual != "novo":
             continue
 
         telefone_destino = lead.get("telefone", "")
@@ -790,14 +1070,11 @@ def main() -> None:
         for _ in range(len(contas_disponiveis)):
             candidata = contas_disponiveis[rr_idx % len(contas_disponiveis)]
             rr_idx += 1
-            limite_conta = int(candidata.get("daily_limit", DAILY_MESSAGE_LIMIT))
-            enviados_conta = int(candidata.get("enviados_hoje", 0))
-            if enviados_conta < limite_conta:
+            if int(candidata.get("enviados_hoje", 0)) < int(candidata.get("daily_limit", DAILY_MESSAGE_LIMIT)):
                 conta_escolhida = candidata
                 break
 
         if not conta_escolhida:
-            print("Todas as 5 instâncias selecionadas atingiram seus limites diários de envio (Anti-Ban).")
             break
 
         response = send_whatsapp_message(
@@ -808,36 +1085,34 @@ def main() -> None:
             account=conta_escolhida,
             lead_name=lead.get("nome", ""),
         )
+        if response and response.get("error") in ("ja_enviado_historico", "ja_conversado_no_chip"):
+            lead["status"] = "enviado"
+            lead["conta_id"] = conta_escolhida["id"]
+            salvar_leads_csv(leads, fieldnames)
+            continue
 
+        attempts += 1
         if response and "messages" in response:
-            message_id = response["messages"][0].get("id", "")
-            agora_iso = datetime.now().isoformat()
             cid = conta_escolhida["id"]
             lead["status"] = "enviado"
             lead["conta_id"] = cid
-            lead["message_id"] = message_id
-            lead["ultima_interacao_em"] = agora_iso
+            lead["message_id"] = response["messages"][0].get("id", "")
+            lead["ultima_interacao_em"] = datetime.now().isoformat()
             sent_count += 1
             por_conta[cid] = por_conta.get(cid, 0) + 1
             conta_escolhida["enviados_hoje"] = int(conta_escolhida.get("enviados_hoje", 0)) + 1
             registrar_disparo_conta(cid)
+            salvar_leads_csv(leads, fieldnames)
+        elif response and response.get("fatal_connection"):
+            contas_disponiveis = [c for c in contas_disponiveis if c["id"] != conta_escolhida["id"]]
+            if not contas_disponiveis:
+                break
 
-            if not modo_simulacao:
-                salvar_leads_csv(leads, fieldnames)
-
-            # Delay aleatório anti-ban (Jitter) entre MIN_DELAY e MAX_DELAY
-            espera = 0.05 if modo_simulacao else random.uniform(MIN_DELAY, max(MIN_DELAY, MAX_DELAY))
-            time.sleep(espera)
+        if sent_count < limite_execucao and attempts < limite_execucao and contas_disponiveis:
+            time.sleep(0.05 if modo_simulacao else random.uniform(MIN_DELAY, max(MIN_DELAY, MAX_DELAY)))
 
     salvar_leads_csv(leads, fieldnames)
-
-    print(
-        f"\nCampaign finished via Evolution API ({'DRY-RUN' if modo_simulacao else 'LIVE'}).\n"
-        f"  - Sent in this run: {sent_count}\n"
-        f"  - Per instance breakdown: {por_conta}\n"
-        f"  - Skipped (already processed): {skipped_already_sent}\n"
-        f"  - Skipped (opt-out/blocked): {skipped_opt_out}"
-    )
+    print(f"Finished: {sent_count} sent | Per account: {por_conta}")
 
 
 if __name__ == "__main__":

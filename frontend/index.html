@@ -3,452 +3,804 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Assistant to the Lead Manager · Evolution API (5 Chips Simultâneos)</title>
+<title>Assistant to the Lead Manager · Enterprise 50 Chips + Admin & Monitor NOC</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@600;700&family=Courier+Prime:wght@400;700&family=Inter:wght@400;500;600;700&display=swap">
 <style>
 :root{
-  --bg:#f4f1ea;
+  --bg:#f0ede6;
   --paper:#fbfaf6;
   --card:#ffffff;
-  --ink:#1e2328;
-  --muted:#5c6470;
-  --line:#d8d2c5;
-  --brand:#1f4e8c;
-  --wa:#128c7e;
-  --wa-dark:#075e54;
-  --ok:#1f6f43;
-  --warn:#b86b11;
-  --danger:#c93b2b;
+  --ink:#181c20;
+  --muted:#5a6270;
+  --line:#d5cfc2;
+  --brand:#1d4ed8;
+  --brand-soft:#eff6ff;
+  --wa:#0d9488;
+  --wa-dark:#0f766e;
+  --ok:#15803d;
+  --ok-soft:#f0fdf4;
+  --warn:#b45309;
+  --warn-soft:#fffbeb;
+  --danger:#b91c1c;
+  --danger-soft:#fef2f2;
   --purple:#6d28d9;
+  --gold:#ca8a04;
   --f-head:"Archivo Narrow",sans-serif;
   --f-body:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
   --f-mono:"Courier Prime",monospace;
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:13.5px}
-.wrap{max-width:1360px;margin:0 auto;padding:18px 20px 48px;display:flex;flex-direction:column;gap:16px}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:13.5px;transition:background .2s,color .2s}
+
+/* MODO SEGUNDA TELA PERMANENTE (NOC DARK WALLBOARD) */
+body.noc-mode{
+  --bg:#0b0f17;
+  --paper:#111827;
+  --card:#1e293b;
+  --ink:#f1f5f9;
+  --muted:#94a3b8;
+  --line:#334155;
+  --brand:#38bdf8;
+  --brand-soft:#0f172a;
+  --ok-soft:#052e16;
+  --warn-soft:#451a03;
+  --danger-soft:#450a0a;
+}
+
+.wrap{max-width:1440px;margin:0 auto;padding:14px 18px 48px;display:flex;flex-direction:column;gap:14px}
 
 /* TOPBAR */
-.topbar{background:var(--paper);border:2px solid var(--ink);padding:14px 18px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:14px;box-shadow:0 3px 0 var(--line)}
+.topbar{background:var(--paper);border:2px solid var(--ink);padding:12px 16px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;box-shadow:0 4px 0 var(--line);border-radius:6px}
 .brand{display:flex;align-items:center;gap:12px}
-.logo{width:48px;height:48px;background:var(--wa);color:#fff;border:2px solid var(--ink);display:grid;place-items:center;font-family:var(--f-head);font-weight:700;font-size:17px;letter-spacing:.5px}
-.brand h1{margin:0;font-family:var(--f-head);font-size:23px;letter-spacing:.6px;text-transform:uppercase;color:var(--ink)}
-.brand p{margin:2px 0 0;font-family:var(--f-mono);font-size:11.5px;color:var(--muted)}
-.top-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.logo{width:48px;height:48px;background:linear-gradient(135deg,var(--wa),var(--brand));color:#fff;border:2px solid var(--ink);border-radius:8px;display:grid;place-items:center;font-family:var(--f-head);font-weight:700;font-size:17px;letter-spacing:.5px}
+.brand h1{margin:0;font-family:var(--f-head);font-size:22px;letter-spacing:.6px;text-transform:uppercase;color:var(--ink);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.brand p{margin:2px 0 0;font-family:var(--f-mono);font-size:11px;color:var(--muted)}
+.top-actions{display:flex;flex-wrap:wrap;gap:7px;align-items:center}
+
+/* BARRA DE NAVEGAÇÃO PRINCIPAL POR VISÕES */
+.nav-tabs{display:flex;flex-wrap:wrap;gap:8px;background:var(--paper);border:2px solid var(--ink);padding:8px 12px;border-radius:6px;box-shadow:0 3px 0 var(--line);align-items:center;justify-content:space-between}
+.nav-group{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.nav-tab{font-family:var(--f-head);font-size:13.5px;letter-spacing:.6px;text-transform:uppercase;font-weight:700;padding:8px 14px;border:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;border-radius:5px;display:inline-flex;align-items:center;gap:6px;transition:.15s}
+.nav-tab:hover{color:var(--ink);background:rgba(128,128,128,.1)}
+.nav-tab.active{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+body.noc-mode .nav-tab.active{background:var(--brand);color:#0f172a;border-color:var(--brand)}
 
 /* BUTTONS */
-.btn{font-family:var(--f-head);font-size:13px;letter-spacing:.7px;text-transform:uppercase;font-weight:700;padding:7px 12px;border:2px solid var(--ink);background:#fff;color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:6px;text-decoration:none;transition:.12s}
-.btn:hover{background:var(--ink);color:#fff}
+.btn{font-family:var(--f-head);font-size:12.5px;letter-spacing:.6px;text-transform:uppercase;font-weight:700;padding:7px 12px;border:2px solid var(--ink);background:var(--card);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:6px;text-decoration:none;border-radius:5px;transition:.12s}
+.btn:hover{background:var(--ink);color:var(--paper)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .btn.wa{border-color:var(--wa);background:var(--wa);color:#fff}
 .btn.wa:hover{background:var(--wa-dark);border-color:var(--wa-dark)}
-.btn.brand{border-color:var(--brand);color:var(--brand)}
-.btn.brand:hover{background:var(--brand);color:#fff}
+.btn.brand{border-color:var(--brand);background:var(--brand);color:#fff}
+.btn.brand:hover{opacity:.9}
 .btn.ok{border-color:var(--ok);color:var(--ok)}
 .btn.ok:hover{background:var(--ok);color:#fff}
+.btn.warn{border-color:var(--warn);color:var(--warn)}
+.btn.warn:hover{background:var(--warn);color:#fff}
 .btn.danger{border-color:var(--danger);color:var(--danger)}
 .btn.danger:hover{background:var(--danger);color:#fff}
 .btn.purple{border-color:var(--purple);background:var(--purple);color:#fff}
-.btn.purple:hover{background:#5219b5;border-color:#5219b5}
+.btn.gold{border-color:var(--gold);background:#fef9c3;color:#854d0e}
 .btn.sm{font-size:11.5px;padding:4px 8px;border-width:1.5px}
 
-/* BOTÃO DE EXPLICAÇÃO (?) */
+/* BOTÕES DE EXPLICAÇÃO (?) */
 .help-btn{
   display:inline-flex;align-items:center;justify-content:center;gap:3px;
   font-family:var(--f-head);font-size:11px;font-weight:700;letter-spacing:.4px;
-  padding:1px 6px;border:1.5px solid var(--brand);background:#eef4fb;color:var(--brand);
-  cursor:pointer;border-radius:3px;transition:.12s;vertical-align:middle;line-height:1.3;
-  text-transform:uppercase;
+  padding:2px 7px;border:1.5px solid var(--brand);background:var(--brand-soft);color:var(--brand);
+  cursor:pointer;border-radius:4px;transition:.12s;vertical-align:middle;line-height:1.3;text-transform:uppercase;
 }
 .help-btn:hover{background:var(--brand);color:#fff}
 .help-circle{
   width:18px;height:18px;border-radius:50%;padding:0;font-size:11.5px;font-weight:700;
-  display:inline-grid;place-items:center;border:1.5px solid var(--brand);background:#eef4fb;color:var(--brand);
+  display:inline-grid;place-items:center;border:1.5px solid var(--brand);background:var(--brand-soft);color:var(--brand);
   cursor:pointer;transition:.12s;flex-shrink:0;
 }
 .help-circle:hover{background:var(--brand);color:#fff}
 
-/* KPI CARDS */
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px}
-.kpi{background:var(--card);border:2px solid var(--ink);padding:12px 14px;box-shadow:2px 2px 0 var(--line);display:flex;flex-direction:column;gap:4px;cursor:pointer;transition:.12s;position:relative}
-.kpi:hover{transform:translateY(-1px);background:var(--paper)}
-.kpi-top{display:flex;justify-content:space-between;align-items:center;gap:4px}
-.kpi .lbl{font-family:var(--f-head);font-size:12px;letter-spacing:.9px;text-transform:uppercase;color:var(--muted);font-weight:700}
-.kpi .val{font-family:var(--f-head);font-size:30px;font-weight:700;line-height:1.05}
-.kpi .sub{font-family:var(--f-mono);font-size:11px;color:var(--muted)}
+/* BANNER DE ALERTA DE RESTRIÇÃO ATIVA (COM TIMER REGRESSIVO) */
+.restriction-banner{
+  background:var(--danger-soft);border:2px solid var(--danger);border-radius:6px;padding:12px 16px;
+  display:none;flex-direction:column;gap:8px;box-shadow:0 3px 0 rgba(185,28,28,.2);
+}
+.restriction-banner.show{display:flex}
+.rb-item{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;background:var(--card);border:1.5px solid var(--danger);padding:8px 12px;border-radius:5px}
+.timer-pill{font-family:var(--f-mono);font-size:13px;font-weight:700;background:var(--danger);color:#fff;padding:3px 9px;border-radius:4px;display:inline-flex;align-items:center;gap:5px}
 
-/* POOL DE 5 INSTÂNCIAS EVOLUTION API */
-.accounts-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
-@media(max-width:1150px){.accounts-grid{grid-template-columns:repeat(auto-fit,minmax(225px,1fr))}}
-.acc-card{background:#fff;border:2px solid var(--ink);padding:10px 12px;display:flex;flex-direction:column;gap:6px;position:relative;transition:.12s}
-.acc-card.active{border-color:var(--wa);background:#f6fbf9;box-shadow:2px 2px 0 rgba(18,140,126,.22)}
-.acc-card.inactive{opacity:.72;background:#f7f5ef}
+/* KPI CARDS */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:10px}
+.kpi{background:var(--card);border:2px solid var(--ink);border-radius:6px;padding:11px 13px;box-shadow:2px 2px 0 var(--line);display:flex;flex-direction:column;gap:3px;cursor:pointer;transition:.12s;position:relative}
+.kpi:hover{transform:translateY(-2px)}
+.kpi-top{display:flex;justify-content:space-between;align-items:center;gap:4px}
+.kpi .lbl{font-family:var(--f-head);font-size:11.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);font-weight:700}
+.kpi .val{font-family:var(--f-head);font-size:28px;font-weight:700;line-height:1.05}
+.kpi .sub{font-family:var(--f-mono);font-size:10.5px;color:var(--muted)}
+
+/* CARD DA CONTA PRINCIPAL ADMINISTRADORA (NÃO PROSPECTA) */
+.admin-bar{
+  background:linear-gradient(90deg,rgba(202,138,4,.12),rgba(29,78,216,.08));
+  border:2px solid var(--gold);border-radius:6px;padding:12px 15px;
+  display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;
+}
+.admin-badge{font-family:var(--f-mono);font-size:11px;font-weight:700;padding:3px 8px;background:#fef08a;color:#713f12;border:1.5px solid #ca8a04;border-radius:4px}
+
+/* MATRIZ DE 50 CHIPS SIMULTÂNEOS */
+.accounts-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(235px,1fr));gap:10px}
+.acc-card{background:var(--card);border:2px solid var(--ink);border-radius:6px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;position:relative;transition:.12s}
+.acc-card.active{border-color:var(--wa);box-shadow:2px 2px 0 rgba(13,148,136,.25)}
+.acc-card.restricted{border-color:var(--danger);background:var(--danger-soft)}
+.acc-card.inactive{opacity:.78}
 .acc-head{display:flex;justify-content:space-between;align-items:center;gap:6px}
-.acc-title{font-family:var(--f-head);font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.6px}
+.acc-title{font-family:var(--f-head);font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
 .acc-meta{font-family:var(--f-mono);font-size:11px;color:var(--muted);display:grid;gap:2px}
-.quota-bar{height:7px;background:#e5e0d4;border:1px solid var(--ink);overflow:hidden}
+.quota-bar{height:7px;background:var(--line);border:1px solid var(--ink);border-radius:3px;overflow:hidden}
 .quota-fill{height:100%;background:var(--wa);transition:width .25s}
+
+/* MINI MATRIZ 50 CHIPS (MODO SEGUNDA TELA NOC COMPACTO) */
+.noc-matrix{display:grid;grid-template-columns:repeat(auto-fill,minmax(125px,1fr));gap:8px}
+.noc-tile{background:var(--card);border:2px solid var(--line);border-radius:6px;padding:8px;display:flex;flex-direction:column;gap:4px;cursor:pointer;transition:.12s}
+.noc-tile:hover{transform:scale(1.02)}
+.noc-tile.st-open{border-color:#22c55e;background:rgba(34,197,94,.1)}
+.noc-tile.st-restricted{border-color:#ef4444;background:rgba(239,68,68,.18);animation:pulseRed 1.8s infinite}
+.noc-tile.st-active-idle{border-color:#38bdf8;background:rgba(56,189,248,.08)}
+@keyframes pulseRed{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 5px rgba(239,68,68,0)}}
 
 /* GRID PRINCIPAL */
 .grid-2{display:grid;grid-template-columns:1.1fr .9fr;gap:14px;align-items:start}
 @media(max-width:980px){.grid-2{grid-template-columns:1fr}}
-.card{background:var(--paper);border:2px solid var(--ink);padding:15px;box-shadow:0 3px 0 var(--line);display:flex;flex-direction:column;gap:12px}
+.card{background:var(--paper);border:2px solid var(--ink);border-radius:6px;padding:14px;box-shadow:0 3px 0 var(--line);display:flex;flex-direction:column;gap:12px}
 .card-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-bottom:2px solid var(--ink);padding-bottom:8px}
-.card-head h2{margin:0;font-family:var(--f-head);font-size:15.5px;letter-spacing:.9px;text-transform:uppercase;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.badge{font-family:var(--f-mono);font-size:11px;font-weight:700;padding:2px 7px;border:1.5px solid var(--ink);background:#fff}
+.card-head h2{margin:0;font-family:var(--f-head);font-size:15.5px;letter-spacing:.8px;text-transform:uppercase;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.badge{font-family:var(--f-mono);font-size:11px;font-weight:700;padding:2px 7px;border:1.5px solid var(--ink);background:var(--card);border-radius:4px}
 
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media(max-width:640px){.form-grid{grid-template-columns:1fr}}
 .field{display:flex;flex-direction:column;gap:4px}
 .field.full{grid-column:1 / -1}
-.field label{font-family:var(--f-head);font-size:11.5px;letter-spacing:.8px;text-transform:uppercase;font-weight:700;color:var(--brand);display:flex;align-items:center;justify-content:space-between;gap:6px}
-.inp,.ta{width:100%;font-family:var(--f-mono);font-size:12px;padding:7px 9px;border:1.5px solid var(--ink);background:#fff;color:var(--ink)}
+.field label{font-family:var(--f-head);font-size:11.5px;letter-spacing:.7px;text-transform:uppercase;font-weight:700;color:var(--brand);display:flex;align-items:center;justify-content:space-between;gap:6px}
+.inp,.ta{width:100%;font-family:var(--f-mono);font-size:12px;padding:7px 9px;border:1.5px solid var(--ink);border-radius:4px;background:var(--card);color:var(--ink)}
 .ta{resize:vertical;line-height:1.45}
 
 /* TABELA DE LEADS */
 .table-toolbar{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px}
-.table-wrap{overflow-x:auto;border:1.5px solid var(--ink);background:#fff}
+.table-wrap{overflow-x:auto;border:1.5px solid var(--ink);border-radius:5px;background:var(--card)}
 table{width:100%;border-collapse:collapse;font-size:12.5px}
-th,td{padding:8px 10px;border-bottom:1px solid #e5e0d4;text-align:left;vertical-align:middle}
-th{background:#efeae0;font-family:var(--f-head);font-size:12px;letter-spacing:.9px;text-transform:uppercase;border-bottom:2px solid var(--ink)}
-tr:hover td{background:#faf8f2}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+th{background:rgba(128,128,128,.12);font-family:var(--f-head);font-size:12px;letter-spacing:.8px;text-transform:uppercase;border-bottom:2px solid var(--ink)}
+tr:hover td{background:rgba(128,128,128,.05)}
 
-.st{font-family:var(--f-head);font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;padding:2px 7px;border:1.5px solid var(--ink);display:inline-block}
-.st-novo,.st-pendente{border-color:var(--warn);color:var(--warn);background:#fff9eb}
-.st-enviado{border-color:var(--brand);color:var(--brand);background:#eef4fb}
-.st-interessado{border-color:var(--ok);color:var(--ok);background:#eaf7ef}
-.st-respondeu{border-color:var(--purple);color:var(--purple);background:#f5f0ff}
-.st-opt_out{border-color:var(--danger);color:var(--danger);background:#fdf0ef}
+.st{font-family:var(--f-head);font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;padding:2px 7px;border:1.5px solid var(--ink);border-radius:4px;display:inline-block}
+.st-novo,.st-pendente{border-color:var(--warn);color:var(--warn);background:var(--warn-soft)}
+.st-enviado{border-color:var(--brand);color:var(--brand);background:var(--brand-soft)}
+.st-interessado{border-color:var(--ok);color:var(--ok);background:var(--ok-soft)}
+.st-respondeu{border-color:var(--purple);color:var(--purple);background:rgba(109,40,217,.1)}
+.st-opt_out,.st-sem_whatsapp{border-color:var(--danger);color:var(--danger);background:var(--danger-soft)}
 
 /* LOG DE EVENTOS */
-.log-box{font-family:var(--f-mono);font-size:11.5px;background:#181b1f;color:#e6edf3;padding:10px;border:1.5px solid var(--ink);max-height:175px;overflow-y:auto;display:grid;gap:4px}
-.log-line{border-bottom:1px dashed #2d333b;padding-bottom:3px}
+.log-box{font-family:var(--f-mono);font-size:11.5px;background:#0f172a;color:#e2e8f0;padding:10px;border:1.5px solid var(--ink);border-radius:5px;max-height:190px;overflow-y:auto;display:grid;gap:4px}
+.log-line{border-bottom:1px dashed #334155;padding-bottom:3px}
+
+/* TOAST NOTIFICATIONS (CANTO INFERIOR DIREITO) */
+.toast-stack{position:fixed;bottom:18px;right:18px;z-index:90;display:flex;flex-direction:column;gap:8px;max-width:380px;width:100%;pointer-events:none}
+.toast{pointer-events:auto;background:var(--card);color:var(--ink);border:2px solid var(--ink);border-left:6px solid var(--wa);padding:10px 12px;border-radius:6px;box-shadow:0 6px 16px rgba(0,0,0,.25);display:flex;justify-content:space-between;align-items:flex-start;gap:10px;animation:slideIn .2s ease-out}
+.toast.danger{border-left-color:var(--danger)}
+.toast.warn{border-left-color:var(--warn)}
+@keyframes slideIn{from{transform:translateX(40px);opacity:0}to{transform:translateX(0);opacity:1}}
 
 /* MODAL */
-.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;place-items:center;z-index:50;padding:16px}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.68);display:none;place-items:center;z-index:70;padding:16px}
 .modal-bg.open{display:grid}
-.modal-card{background:var(--paper);border:3px solid var(--ink);max-width:980px;width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:6px 6px 0 rgba(0,0,0,.3)}
-.modal-top{padding:10px 14px;border-bottom:2px solid var(--ink);display:flex;justify-content:space-between;align-items:center;font-family:var(--f-head);font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:.9px}
+.modal-card{background:var(--paper);color:var(--ink);border:3px solid var(--ink);border-radius:8px;max-width:980px;width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:6px 6px 0 rgba(0,0,0,.35)}
+.modal-top{padding:10px 14px;border-bottom:2px solid var(--ink);display:flex;justify-content:space-between;align-items:center;font-family:var(--f-head);font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:.8px}
 .modal-body{padding:14px;overflow-y:auto;display:grid;gap:12px}
-.slot-box{background:#fff;border:2px solid var(--ink);padding:12px;display:grid;gap:8px}
-.qr-frame{width:260px;height:260px;margin:0 auto;border:3px solid var(--ink);background:#fff;display:grid;place-items:center;padding:10px}
+.slot-box{background:var(--card);border:2px solid var(--ink);border-radius:6px;padding:12px;display:grid;gap:8px}
+.qr-frame{width:260px;height:260px;margin:0 auto;border:3px solid var(--ink);background:#fff;display:grid;place-items:center;padding:10px;border-radius:6px}
 .qr-frame img{max-width:100%;max-height:100%}
 
-/* GLOSSÁRIO / AJUDA CARDS */
-.help-box{background:#fff;border:2px solid var(--ink);padding:14px;display:grid;gap:10px}
-.help-tag{display:inline-block;font-family:var(--f-mono);font-size:11px;font-weight:700;padding:2px 8px;background:#eef4fb;border:1px solid var(--brand);color:var(--brand);width:fit-content}
-.help-tip{background:#eaf7ef;border-left:4px solid var(--ok);padding:10px 12px;font-size:12.5px;line-height:1.45}
+.help-box{background:var(--card);border:2px solid var(--ink);border-radius:6px;padding:14px;display:grid;gap:10px}
+.help-tag{display:inline-block;font-family:var(--f-mono);font-size:11px;font-weight:700;padding:2px 8px;background:var(--brand-soft);border:1px solid var(--brand);color:var(--brand);width:fit-content;border-radius:4px}
+.help-tip{background:var(--ok-soft);border-left:4px solid var(--ok);padding:10px 12px;font-size:12.5px;line-height:1.45}
 .glossary-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media(max-width:720px){.glossary-grid{grid-template-columns:1fr}}
-.glossary-item{background:#fff;border:1.5px solid var(--ink);padding:10px 12px;display:grid;gap:4px}
-.glossary-item h4{margin:0;font-family:var(--f-head);font-size:14px;color:var(--brand);text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center}
-.glossary-item p{margin:0;font-size:12.5px;line-height:1.45;color:var(--ink)}
+.glossary-item{background:var(--card);border:1.5px solid var(--ink);border-radius:5px;padding:10px 12px;display:grid;gap:4px}
+.glossary-item h4{margin:0;font-family:var(--f-head);font-size:14px;color:var(--brand);text-transform:uppercase}
+.glossary-item p{margin:0;font-size:12.5px;line-height:1.45}
+
+.view-section{display:none;flex-direction:column;gap:14px}
+.view-section.active{display:flex}
 </style>
 </head>
 <body>
 
 <div class="wrap">
+  <!-- TOPBAR -->
   <header class="topbar">
     <div class="brand">
-      <div class="logo">EVO5</div>
+      <div class="logo">EVO50</div>
       <div>
-        <h1>Assistant to the Lead Manager · Evolution API (5 Chips Simultâneos via QR Code)</h1>
-        <p>Sem Taxa por Mensagem · Presença "Digitando..." · Jitter Anti-Ban · Round-Robin 5x · DDI +55 & 9º Dígito · CSV Atômico (.tmp)</p>
+        <h1>
+          <span>Assistant to the Lead Manager · Enterprise 50 Chips</span>
+          <span class="badge" id="badgeGlobalHealth" style="border-color:var(--ok);color:var(--ok)">🟢 Sistema Operacional</span>
+        </h1>
+        <p>👑 1 Conta Principal Administradora (Não Prospecta) + Pool Rotativo de até 50 Chips · Timer de Restrição · Monitor NOC 2ª Tela</p>
       </div>
     </div>
     <div class="top-actions">
-      <button class="btn sm purple" type="button" onclick="abrirModal('modalDicionario')">📖 Guia & Dicionário de Termos</button>
+      <button class="btn sm brand" type="button" onclick="abrirSegundaTelaMonitor()" title="Abre janela dedicada para deixar fixa no 2º monitor">
+        🖥️ Abrir 2ª Tela Permanente (Monitor NOC)
+      </button>
+      <button class="btn sm" type="button" id="btnToggleNoc" onclick="alternarModoNocLocal()">🌙 Tema NOC Escuro: OFF</button>
+      <button class="btn sm" type="button" onclick="abrirModal('modalNotificacoes')" id="btnBell">
+        🔔 Alertas (<span id="lblNotifCount">0</span>)
+      </button>
+      <button class="btn sm purple" type="button" onclick="abrirModal('modalDicionario')">📖 Guia & Termos</button>
       <button class="btn sm ok" type="button" id="btnDlp" onclick="alternarPrivacidade()">🔒 Modo Gravação: OFF</button>
-      <button class="btn sm border" type="button" onclick="explicar('modo_gravacao')" title="O que é Modo Gravação?">❓</button>
-      <button class="btn sm wa" type="button" onclick="abrirModal('modalContas')">📲 Configurar 5 Chips</button>
-      <button class="btn sm brand" type="button" onclick="abrirModal('modalConfig')">⚙️ Servidor Evolution (.env)</button>
-      <button class="btn sm" type="button" onclick="abrirModal('modalImportar')">➕ Importar Leads</button>
+      <button class="btn sm wa" type="button" onclick="abrirModal('modalImportar')">➕ Importar Leads (6 Modos)</button>
       <a class="btn sm" href="/api/leads/exportar" target="_blank">📥 Exportar CSV</a>
     </div>
   </header>
 
-  <!-- KPIs EM TEMPO REAL (CLICÁVEIS PARA FILTRAR + BOTÃO DE EXPLICAÇÃO EM CADA UM) -->
+  <!-- AVISO AUTOMÁTICO DE RESTRIÇÃO COM TIMER REGRESSIVO E SUGESTÃO (APARECE SE ALGUM CHIP SOFRER RESTRIÇÃO) -->
+  <section class="restriction-banner" id="bannerRestricoesAtivas">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <strong style="font-family:var(--f-head);font-size:15px;color:var(--danger);text-transform:uppercase;letter-spacing:.7px">
+        🚨 Aviso de Restrição / Quarentena Preventiva Ativa (Com Timer de Resfriamento & Sugestão)
+      </strong>
+      <button class="btn sm danger" type="button" onclick="mudarVisao('restricoes')">🛡️ Abrir Relatório Completo de Restrições & Log de Erros</button>
+    </div>
+    <div id="listaRestricoesBanner" style="display:grid;gap:6px"></div>
+  </section>
+
+  <!-- NAVEGAÇÃO POR VISÕES INTUITIVAS -->
+  <nav class="nav-tabs">
+    <div class="nav-group">
+      <button class="nav-tab active" type="button" id="nav_operacao" onclick="mudarVisao('operacao')">🚀 1. Operação & Disparo</button>
+      <button class="nav-tab" type="button" id="nav_chips" onclick="mudarVisao('chips')">📱 2. Matriz 50 Chips + Conta Admin (<span id="navCountChips">0/50</span>)</button>
+      <button class="nav-tab" type="button" id="nav_encaminhamento" onclick="mudarVisao('encaminhamento')">🔀 3. Encaminhamento & Consultores</button>
+      <button class="nav-tab" type="button" id="nav_restricoes" onclick="mudarVisao('restricoes')">🛡️ 4. Restrições, Timers & Erros (<span id="navCountRestr">0</span>)</button>
+      <button class="nav-tab" type="button" id="nav_leads" onclick="mudarVisao('leads')">📋 5. Base de Leads (<span id="navCountLeads">0</span>)</button>
+      <button class="nav-tab" type="button" id="nav_segunda_tela" onclick="mudarVisao('segunda_tela')">📺 6. Monitor 2ª Tela (NOC Ao Vivo)</button>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center">
+      <button class="btn sm" type="button" onclick="abrirModal('modalConfig')">⚙️ Servidor Evolution (.env)</button>
+    </div>
+  </nav>
+
+  <!-- KPIs EM TEMPO REAL (SEMPRE VISÍVEIS E CLICÁVEIS) -->
   <section class="kpis">
-    <div class="kpi" onclick="filtrarPorCard('todos')">
+    <div class="kpi" onclick="irParaLeadsFiltrado('todos')">
       <div class="kpi-top">
         <span class="lbl">Total na Base CSV</span>
-        <button class="help-circle" type="button" onclick="event.stopPropagation();explicar('kpi_total')" title="Explicar este indicador">?</button>
+        <button class="help-circle" type="button" onclick="event.stopPropagation();explicar('kpi_total')">?</button>
       </div>
       <span class="val" id="kTotal">0</span>
-      <span class="sub">data/leads.csv (Crash-Safe)</span>
+      <span class="sub">Proteção Dupla Anti-Reenvio</span>
     </div>
-    <div class="kpi" onclick="filtrarPorCard('novo')">
+    <div class="kpi" onclick="irParaLeadsFiltrado('novo')">
       <div class="kpi-top">
-        <span class="lbl">Na Fila (Novos)</span>
-        <button class="help-circle" type="button" onclick="event.stopPropagation();explicar('kpi_novo')" title="Explicar este indicador">?</button>
+        <span class="lbl">⏳ Na Fila (Novos)</span>
+        <button class="help-circle" type="button" onclick="event.stopPropagation();explicar('kpi_novo')">?</button>
       </div>
       <span class="val" id="kNovo" style="color:var(--warn)">0</span>
-      <span class="sub">Prontos p/ disparo</span>
+      <span class="sub">Prontos p/ prospecção</span>
     </div>
-    <div class="kpi" onclick="filtrarPorCard('enviado')">
+    <div class="kpi" onclick="irParaLeadsFiltrado('enviado')">
       <div class="kpi-top">
-        <span class="lbl">Mensagens Enviadas</span>
-        <button class="help-circle" type="button" onclick="event.stopPropagation();explicar('kpi_enviado')" title="Explicar este indicador">?</button>
+        <span class="lbl">📤 Já Abordados</span>
+        <button class="help-circle" type="button" onclick="event.stopPropagation();explicar('kpi_enviado')">?</button>
       </div>
       <span class="val" id="kEnviado" style="color:var(--brand)">0</span>
-      <span class="sub">Protegidos contra reenvio</span>
+      <span class="sub">Bloqueados contra repetição</span>
     </div>
-    <div class="kpi" onclick="filtrarPorCard('interessado')">
+    <div class="kpi" onclick="irParaLeadsFiltrado('interessado')">
       <div class="kpi-top">
         <span class="lbl">🔥 Interessados (1)</span>
-        <button class="help-circle" type="button" onclick="event.stopPropagation();explicar('kpi_interessado')" title="Explicar este indicador">?</button>
+        <button class="help-circle" type="button" onclick="event.stopPropagation();explicar('kpi_interessado')">?</button>
       </div>
       <span class="val" id="kInteressado" style="color:var(--ok)">0</span>
-      <span class="sub">Repasse imediato wa.me</span>
+      <span class="sub">Encaminhados p/ Consultor</span>
     </div>
-    <div class="kpi" onclick="filtrarPorCard('respondeu')">
+    <div class="kpi" onclick="irParaLeadsFiltrado('respondeu')">
       <div class="kpi-top">
-        <span class="lbl">💬 Respostas Livres</span>
-        <button class="help-circle" type="button" onclick="event.stopPropagation();explicar('kpi_respondeu')" title="Explicar este indicador">?</button>
+        <span class="lbl">💬 Dúvidas Livres</span>
+        <button class="help-circle" type="button" onclick="event.stopPropagation();explicar('kpi_respondeu')">?</button>
       </div>
       <span class="val" id="kRespondeu" style="color:var(--purple)">0</span>
-      <span class="sub">Aguardando consultor</span>
+      <span class="sub">Aguardando atendimento</span>
     </div>
-    <div class="kpi" onclick="filtrarPorCard('opt_out')">
+    <div class="kpi" onclick="irParaLeadsFiltrado('opt_out')">
       <div class="kpi-top">
-        <span class="lbl">🚫 Opt-Out (Opção 2)</span>
-        <button class="help-circle" type="button" onclick="event.stopPropagation();explicar('kpi_optout')" title="Explicar este indicador">?</button>
+        <span class="lbl">🚫 Opt-Out (2)</span>
+        <button class="help-circle" type="button" onclick="event.stopPropagation();explicar('kpi_optout')">?</button>
       </div>
       <span class="val" id="kOptOut" style="color:var(--danger)">0</span>
-      <span class="sub">Bloqueados permanentemente</span>
+      <span class="sub">Lista Não Perturbe</span>
     </div>
   </section>
 
-  <!-- POOL DE 5 INSTÂNCIAS SIMULTÂNEAS DA EVOLUTION API -->
-  <section class="card">
-    <div class="card-head">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <h2>
-          📲 Pool Evolution API · 5 Chips Simultâneos
-          <button class="help-btn" type="button" onclick="explicar('pool_5_chips')">❓ Como funciona o Pool de 5 Chips?</button>
-        </h2>
-        <span class="badge" id="badgePoolResumo" style="color:var(--wa);border-color:var(--wa)">Carregando 5 instâncias...</span>
-      </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-        <button class="btn sm brand" type="button" id="btnCheckEvo" onclick="checarStatusEvolution()">📡 Sincronizar Status</button>
-        <button class="help-circle" type="button" onclick="explicar('sincronizar_status')" title="O que faz Sincronizar Status?">?</button>
-        <button class="btn sm" type="button" onclick="zerarContadoresDiarios()">🔄 Zerar Cota Diária</button>
-        <button class="help-circle" type="button" onclick="explicar('cota_diaria')" title="O que é a Cota Diária Anti-Ban?">?</button>
-        <button class="btn sm wa" type="button" onclick="abrirModal('modalContas')">⚙️ Editar as 5 Instâncias</button>
-      </div>
-    </div>
-    <div class="accounts-grid" id="gridContas"></div>
-  </section>
+  <!-- ===================================================================== -->
+  <!-- VISÃO 1: OPERAÇÃO & DISPARO (DASHBOARD PRINCIPAL)                      -->
+  <!-- ===================================================================== -->
+  <div class="view-section active" id="view_operacao">
+    <!-- BARRA RÁPIDA DA CONTA PRINCIPAL ADMINISTRADORA -->
+    <div class="admin-bar" id="barContaAdminResumo"></div>
 
-  <!-- PAINEL DE CONTROLE DE CAMPANHA + SIMULADOR DE WEBHOOK -->
-  <section class="grid-2">
-    <!-- COLUNA 1: DISPARADOR DE CAMPANHAS (send_campaigns.py) -->
-    <div class="card">
-      <div class="card-head">
-        <h2>
-          🚀 Disparador de Campanhas
-          <button class="help-btn" type="button" onclick="explicar('disparador_geral')">❓ Como usar?</button>
-        </h2>
-        <span class="badge" id="badgeJanelaComercial">Verificando horário...</span>
-      </div>
-      <div class="form-grid">
-        <div class="field">
-          <label>
-            <span>Modo de Envio (DRY-RUN vs Real)</span>
-            <button class="help-btn" type="button" onclick="explicar('dry_run')">❓ O que é DRY-RUN?</button>
-          </label>
-          <select class="inp" id="campDryRun">
-            <option value="true">🧪 Simulação Segura (DRY-RUN — Teste sem enviar)</option>
-            <option value="false">⚡ Envio Real via Evolution API (Chips Conectados)</option>
-          </select>
+    <section class="grid-2">
+      <!-- DISPARADOR DE CAMPANHAS -->
+      <div class="card">
+        <div class="card-head">
+          <h2>
+            🚀 Disparador Inteligente (Pool 50 Chips)
+            <button class="help-btn" type="button" onclick="explicar('disparador_geral')">❓ Como usar?</button>
+          </h2>
+          <span class="badge" id="badgeJanelaComercial">Verificando horário...</span>
         </div>
-        <div class="field">
-          <label>
-            <span>Roteamento de Chips (Round-Robin)</span>
-            <button class="help-btn" type="button" onclick="explicar('round_robin')">❓ O que é Round-Robin?</button>
-          </label>
-          <select class="inp" id="campAccountMode">
-            <option value="todas_ativas">🔄 Pool Rotativo (Round-Robin nos Chips Ativos)</option>
-            <option value="conta_1">📲 Apenas Chip #1 (chip_1)</option>
-            <option value="conta_2">📲 Apenas Chip #2 (chip_2)</option>
-            <option value="conta_3">📲 Apenas Chip #3 (chip_3)</option>
-            <option value="conta_4">📲 Apenas Chip #4 (chip_4)</option>
-            <option value="conta_5">📲 Apenas Chip #5 (chip_5)</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>
-            <span>Limite do Lote nesta Rodada (Warm-Up)</span>
-            <button class="help-btn" type="button" onclick="explicar('warmup_lote')">❓ O que é Warm-Up?</button>
-          </label>
-          <input type="number" class="inp" id="campLimit" value="5" min="1" max="2000">
-        </div>
-        <div class="field">
-          <label>
-            <span>Jitter Anti-Ban (Delay Mín e Máx em seg)</span>
-            <button class="help-btn" type="button" onclick="explicar('jitter_antiban')">❓ O que é Jitter?</button>
-          </label>
-          <div style="display:flex;gap:6px">
-            <input type="number" class="inp" id="campMinDelay" value="15" min="0" max="180" step="1" title="Tempo mínimo de espera (segundos)">
-            <input type="number" class="inp" id="campMaxDelay" value="35" min="0" max="300" step="1" title="Tempo máximo de espera (segundos)">
+        <div class="form-grid">
+          <div class="field">
+            <label>
+              <span>Modo de Envio</span>
+              <button class="help-btn" type="button" onclick="explicar('dry_run')">❓ DRY-RUN</button>
+            </label>
+            <select class="inp" id="campDryRun">
+              <option value="true">🧪 Simulação Segura (DRY-RUN — Teste sem enviar)</option>
+              <option value="false">⚡ Envio Real via Evolution API (Apenas Chips 🟢 Conectados)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>
+              <span>Seleção de Chips (1 a 50)</span>
+              <button class="help-btn" type="button" onclick="explicar('round_robin')">❓ Round-Robin</button>
+            </label>
+            <select class="inp" id="campAccountMode">
+              <option value="todas_ativas">🔄 Pool Rotativo (Todos os Chips Ativos e Livres de Restrição)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>
+              <span>Limite do Lote nesta Rodada</span>
+              <button class="help-btn" type="button" onclick="explicar('warmup_lote')">❓ Warm-Up</button>
+            </label>
+            <input type="number" class="inp" id="campLimit" value="5" min="1" max="2000">
+          </div>
+          <div class="field">
+            <label>
+              <span>Jitter Anti-Ban (Mín e Máx em seg)</span>
+              <button class="help-btn" type="button" onclick="explicar('jitter_antiban')">❓ Jitter</button>
+            </label>
+            <div style="display:flex;gap:6px">
+              <input type="number" class="inp" id="campMinDelay" value="15" min="0" max="180" step="1">
+              <input type="number" class="inp" id="campMaxDelay" value="35" min="0" max="300" step="1">
+            </div>
+          </div>
+          <div class="field full">
+            <label>
+              <span>Trava de Horário Comercial (8h às 18h Seg-Sex)</span>
+              <button class="help-btn" type="button" onclick="explicar('trava_horario')">❓ Explicar</button>
+            </label>
+            <select class="inp" id="campForceHours">
+              <option value="true">Ignorar trava para testar agora (--force-hours)</option>
+              <option value="false">Respeitar estritamente janela comercial</option>
+            </select>
+          </div>
+          <div class="field full">
+            <label>
+              <span>Mensagem de Prospecção (Suporta {nome}, Spintax {Olá|Oi} e "Digitando...")</span>
+              <button class="help-btn" type="button" onclick="explicar('mensagem_variaveis')">❓ Como variar?</button>
+            </label>
+            <textarea class="ta" id="campMensagem" rows="5"></textarea>
           </div>
         </div>
-        <div class="field full">
-          <label>
-            <span>Trava de Horário Comercial (8h às 18h Seg-Sex)</span>
-            <button class="help-btn" type="button" onclick="explicar('trava_horario')">❓ Por que existe essa trava?</button>
-          </label>
-          <select class="inp" id="campForceHours">
-            <option value="true">Ignorar trava para testar agora (--force-hours)</option>
-            <option value="false">Respeitar estritamente janela comercial (Recomendado p/ Produção)</option>
-          </select>
-        </div>
-        <div class="field full">
-          <label>
-            <span>Mensagem de Prospecção (Variáveis + "Digitando...")</span>
-            <button class="help-btn" type="button" onclick="explicar('mensagem_variaveis')">❓ Como personalizar o texto?</button>
-          </label>
-          <textarea class="ta" id="campMensagem" rows="5"></textarea>
-        </div>
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;border-top:1px dashed var(--line);padding-top:8px">
-        <span id="campFeedback" style="font-family:var(--f-mono);font-size:11.5px;color:var(--muted)">
-          Evolution API: envia presença "composing" ("Digitando...") antes de cada mensagem.
-        </span>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button class="btn danger sm" type="button" onclick="pararDisparoCampanha()" title="Interrompe qualquer lote em andamento na hora">
-            🛑 Parar Disparo
-          </button>
-          <button class="btn wa" type="button" id="btnDisparar" onclick="executarDisparoCampanha()">
-            🚀 Disparar Lote Evolution API
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- COLUNA 2: WEBHOOK RECEIVER & LOGS EM TEMPO REAL (webhook_receiver.py) -->
-    <div class="card">
-      <div class="card-head">
-        <h2>
-          📡 Receptor Webhook & Simulador
-          <button class="help-btn" type="button" onclick="explicar('webhook_geral')">❓ O que é Webhook?</button>
-        </h2>
-        <span class="badge" style="color:var(--wa);border-color:var(--wa)" onclick="explicar('nono_digito')" title="Clique para entender o casamento do 9º dígito" style="cursor:pointer">9º Dígito Inteligente ❓</span>
-      </div>
-      <p style="margin:0;font-size:12px;color:var(--muted)">
-        Quando o cliente responde no WhatsApp real, o sistema processa tudo sozinho. Você também pode usar os campos abaixo para <b>simular a resposta de um cliente</b> e testar o repasse para o consultor:
-      </p>
-      <div class="form-grid">
-        <div class="field">
-          <label>
-            <span>Telefone do Lead</span>
-            <button class="help-circle" type="button" onclick="explicar('nono_digito')">?</button>
-          </label>
-          <input class="inp" id="simPhone" value="11900000001" placeholder="Ex: 11900000001">
-        </div>
-        <div class="field">
-          <label>
-            <span>Instância Evolution Receptora</span>
-            <button class="help-circle" type="button" onclick="explicar('instancia_receptora')">?</button>
-          </label>
-          <select class="inp" id="simAccount">
-            <option value="">🔍 Auto-detectar pela planilha (ou Chip #1)</option>
-            <option value="conta_1">📲 Chip #1 (chip_1)</option>
-            <option value="conta_2">📲 Chip #2 (chip_2)</option>
-            <option value="conta_3">📲 Chip #3 (chip_3)</option>
-            <option value="conta_4">📲 Chip #4 (chip_4)</option>
-            <option value="conta_5">📲 Chip #5 (chip_5)</option>
-          </select>
-        </div>
-        <div class="field full">
-          <label>
-            <span>Nome no Perfil WhatsApp (pushName)</span>
-            <button class="help-btn" type="button" onclick="explicar('push_name')">❓ O que é pushName?</button>
-          </label>
-          <input class="inp" id="simName" value="Lead 1 (Empresa CNPJ)">
-        </div>
-        <div class="field full">
-          <label>
-            <span>Simular Resposta do Cliente (1, 2 ou Dúvida)</span>
-            <button class="help-btn" type="button" onclick="explicar('triagem_1_2')">❓ O que acontece quando responde 1 ou 2?</button>
-          </label>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;border-top:1px dashed var(--line);padding-top:8px">
+          <span id="campFeedback" style="font-family:var(--f-mono);font-size:11.5px;color:var(--muted)">
+            Checa histórico do aparelho (/chat/findMessages) antes de enviar para nunca repetir!
+          </span>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <input class="inp" id="simText" value="1" style="flex:1">
-            <button class="btn sm ok" type="button" onclick="simularRespostaWebhook('1')">1️⃣ Interesse</button>
-            <button class="btn sm danger" type="button" onclick="simularRespostaWebhook('2')">2️⃣ Opt-Out</button>
-            <button class="btn sm brand" type="button" onclick="simularRespostaWebhook('Tenho 15 funcionários no CNPJ, qual a carência?')">💬 Dúvida Livre</button>
+            <button class="btn danger sm" type="button" onclick="pararDisparoCampanha()">🛑 Parar Disparo</button>
+            <button class="btn wa" type="button" id="btnDisparar" onclick="executarDisparoCampanha()">🚀 Disparar Lote</button>
           </div>
         </div>
       </div>
 
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <strong style="font-family:var(--f-head);font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);display:flex;align-items:center;gap:6px">
-          📜 Últimos Eventos Auditados (data/events.log)
-          <button class="help-circle" type="button" onclick="explicar('events_log')">?</button>
-        </strong>
-        <button class="btn sm" type="button" onclick="carregarDashboard()">🔄 Atualizar</button>
+      <!-- SIMULADOR DE WEBHOOK + EVENTOS AO VIVO -->
+      <div class="card">
+        <div class="card-head">
+          <h2>
+            📡 Receptor Webhook & Triagem
+            <button class="help-btn" type="button" onclick="explicar('webhook_geral')">❓ O que é Webhook?</button>
+          </h2>
+          <span class="badge" style="color:var(--wa);border-color:var(--wa);cursor:pointer" onclick="explicar('nono_digito')">Filtro Contatos Pessoais + 9º Dígito ❓</span>
+        </div>
+        <div class="form-grid">
+          <div class="field">
+            <label>Telefone do Lead</label>
+            <input class="inp" id="simPhone" value="11900000001">
+          </div>
+          <div class="field">
+            <label>Chip Receptor (1 a 50)</label>
+            <select class="inp" id="simAccount">
+              <option value="">🔍 Auto-detectar pela planilha</option>
+            </select>
+          </div>
+          <div class="field full">
+            <label>Nome no Perfil WhatsApp (pushName)</label>
+            <input class="inp" id="simName" value="Empresa Demonstração #1">
+          </div>
+          <div class="field full">
+            <label>
+              <span>Testar Resposta do Cliente</span>
+              <button class="help-btn" type="button" onclick="explicar('triagem_1_2')">❓ Como funciona 1 ou 2?</button>
+            </label>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <input class="inp" id="simText" value="1" style="flex:1">
+              <button class="btn sm ok" type="button" onclick="simularRespostaWebhook('1')">1️⃣ Interesse</button>
+              <button class="btn sm danger" type="button" onclick="simularRespostaWebhook('2')">2️⃣ Opt-Out</button>
+              <button class="btn sm brand" type="button" onclick="simularRespostaWebhook('Tenho 15 funcionários no CNPJ, qual o valor?')">💬 Dúvida</button>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <strong style="font-family:var(--f-head);font-size:12px;text-transform:uppercase;color:var(--muted)">
+            📜 Últimos Eventos Auditados (data/events.log)
+          </strong>
+          <button class="btn sm" type="button" onclick="carregarDashboard()">🔄 Atualizar</button>
+        </div>
+        <div class="log-box" id="eventsLogBox"></div>
       </div>
-      <div class="log-box" id="eventsLogBox">
-        <div>Carregando eventos...</div>
-      </div>
-    </div>
-  </section>
+    </section>
+  </div>
 
-  <!-- TABELA PAGINADA DOS 4.523 LEADS -->
-  <section class="card">
-    <div class="table-toolbar">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <h2 style="margin:0;font-family:var(--f-head);font-size:16px;text-transform:uppercase;display:flex;align-items:center;gap:8px">
-          📋 Base de Leads (<span id="lblTotalFiltrado">0</span> registros)
-          <button class="help-btn" type="button" onclick="explicar('tabela_leads')">❓ Como gerenciar a planilha?</button>
+  <!-- ===================================================================== -->
+  <!-- VISÃO 2: MATRIZ DE 50 CHIPS SIMULTÂNEOS + CONTA PRINCIPAL ADMIN        -->
+  <!-- ===================================================================== -->
+  <div class="view-section" id="view_chips">
+    <!-- CARD DEDICADO DA CONTA PRINCIPAL ADMINISTRADORA -->
+    <section class="card" style="border-color:var(--gold)">
+      <div class="card-head">
+        <h2>
+          👑 Conta Principal Administradora (Não Prospecta · Apenas Administra e Encaminha)
+          <button class="help-btn" type="button" onclick="explicar('conta_admin')">❓ Por que separar a Conta Admin?</button>
         </h2>
-        <select class="inp" id="fStatus" style="width:auto" onchange="paginaAtual=1;carregarDashboard()">
-          <option value="todos">Todos os Status</option>
-          <option value="interessado">🔥 Interessados (1)</option>
-          <option value="respondeu">💬 Responderam Dúvida</option>
-          <option value="enviado">📤 Enviados</option>
-          <option value="novo">⏳ Novos (Na Fila)</option>
-          <option value="opt_out">🚫 Opt-Out (Bloqueados)</option>
-        </select>
-        <select class="inp" id="fAccount" style="width:auto" onchange="paginaAtual=1;carregarDashboard()">
-          <option value="todas">Todos os 5 Chips</option>
-          <option value="conta_1">📲 Chip #1 (chip_1)</option>
-          <option value="conta_2">📲 Chip #2 (chip_2)</option>
-          <option value="conta_3">📲 Chip #3 (chip_3)</option>
-          <option value="conta_4">📲 Chip #4 (chip_4)</option>
-          <option value="conta_5">📲 Chip #5 (chip_5)</option>
-        </select>
-        <input class="inp" id="fBusca" placeholder="Buscar por ID, nome, telefone ou chip..." style="width:240px" oninput="debounceBusca()">
+        <span class="admin-badge">🔒 PROSPECÇÃO BLOQUEADA POR SEGURANÇA</span>
       </div>
-      <div style="display:flex;align-items:center;gap:6px">
-        <button class="btn sm" type="button" id="btnPrev" onclick="mudarPagina(-1)">◀ Anterior</button>
-        <span style="font-family:var(--f-mono);font-size:12px" id="lblPaginacao">Página 1</span>
-        <button class="btn sm" type="button" id="btnNext" onclick="mudarPagina(1)">Próxima ▶</button>
-      </div>
-    </div>
+      <div id="cardContaAdminDetalhe"></div>
+    </section>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Nome / Lead</th>
-            <th>Telefone (DDI +55)</th>
-            <th>Chip / Instância</th>
-            <th>Status</th>
-            <th>Opt-Out</th>
-            <th>Última Interação & Resposta</th>
-            <th>Ações Rápidas / Consultor</th>
-          </tr>
-        </thead>
-        <tbody id="tbodyLeads"></tbody>
-      </table>
-    </div>
-  </section>
+    <!-- CONTROLE DOS 50 CHIPS DE PROSPECÇÃO -->
+    <section class="card">
+      <div class="card-head">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <h2>
+            📲 Pool de Prospecção · Até 50 Chips Simultâneos
+            <button class="help-btn" type="button" onclick="explicar('pool_5_chips')">❓ Como gerenciar os 50 chips?</button>
+          </h2>
+          <span class="badge" id="badgePoolResumo" style="color:var(--wa);border-color:var(--wa)">0/50 Ativos</span>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <select class="inp" id="fFiltroChips" style="width:auto" onchange="renderCardsContas()">
+            <option value="top10">Mostrar Chips #1 a #10 (Rápido)</option>
+            <option value="ativos">Mostrar Apenas Chips Ativos no Pool</option>
+            <option value="conectados">Mostrar Apenas Conectados (🟢)</option>
+            <option value="restritos">Mostrar Em Restrição / Cooldown (⏳)</option>
+            <option value="todos50">Mostrar Todos os 50 Chips (#1 a #50)</option>
+          </select>
+          <button class="btn sm brand" type="button" id="btnCheckEvo" onclick="checarStatusEvolution()">📡 Sincronizar Status (Evolution)</button>
+          <button class="btn sm ok" type="button" onclick="acaoLoteChips('enable_connected')">✅ Ativar Apenas Conectados</button>
+          <button class="btn sm warn" type="button" onclick="acaoLoteChips('pause_all')">⏸️ Pausar Todos</button>
+          <button class="btn sm" type="button" onclick="zerarContadoresDiarios()">🔄 Zerar Cota Diária</button>
+        </div>
+      </div>
+      <div class="accounts-grid" id="gridContas"></div>
+    </section>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- VISÃO 3: CENTRAL DE ENCAMINHAMENTO DE LEADS & FILA DE CONSULTORES     -->
+  <!-- ===================================================================== -->
+  <div class="view-section" id="view_encaminhamento">
+    <section class="card">
+      <div class="card-head">
+        <h2>
+          🔀 Opções de Encaminhamento Inteligente de Leads Quentes
+          <button class="help-btn" type="button" onclick="explicar('encaminhamento_leads')">❓ Como funciona o repasse?</button>
+        </h2>
+        <span class="badge" style="color:var(--brand);border-color:var(--brand)">Repasse Automático + Manual 1-Clique</span>
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label>Regra de Distribuição de Leads Interessados (Opção 1)</label>
+          <select class="inp" id="rtModo">
+            <option value="fixo_por_chip">🎯 Consultor Fixo por Chip (ou Consultor Padrão)</option>
+            <option value="round_robin_consultores">🔄 Fila Rotativa de Consultores (Round-Robin entre Vendedores)</option>
+            <option value="webhook_crm">🌐 Disparar para Webhook CRM Externo + WhatsApp</option>
+            <option value="apenas_painel">🖥️ Apenas Registrar no Painel (Sem enviar WhatsApp ao consultor)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Qual Conta Envia o Aviso para o Consultor?</label>
+          <select class="inp" id="rtUsarAdmin">
+            <option value="true">👑 Enviar pela Conta Principal Administradora (Recomendado — Protege os Chips)</option>
+            <option value="false">📲 Enviar pelo próprio Chip que capturou o Lead</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>WhatsApp do Consultor Padrão (DDI +55)</label>
+          <input class="inp" id="rtConsultorPadrao" placeholder="Ex: 5511999999999">
+        </div>
+        <div class="field">
+          <label>URL de Webhook CRM Externo (Opcional — n8n / Kommo / HubSpot)</label>
+          <input class="inp" id="rtWebhookCrm" placeholder="https://seu-n8n.com/webhook/lead-interessado">
+        </div>
+        <div class="field full">
+          <label>
+            <span>Fila de Consultores / Vendedores (Um por linha: Nome,Telefone — Usado no Modo Fila Rotativa)</span>
+          </label>
+          <textarea class="ta" id="rtFilaConsultores" rows="5" placeholder="Consultor Comercial 1,5511999990001&#10;Consultor Comercial 2,5511999990002&#10;Especialista PME,5511999990003"></textarea>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <label style="display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer">
+          <input type="checkbox" id="rtSomAtivo" checked> 🔊 Tocar alerta sonoro quando chegar Lead Interessado (🔥) ou Aviso de Restrição (🚨)
+        </label>
+        <button class="btn wa" type="button" onclick="salvarConfigEncaminhamento()">💾 Salvar Regras de Encaminhamento</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- VISÃO 4: RELATÓRIO DE RESTRIÇÕES, TIMERS REGRESSIVOS & LOG DE ERROS   -->
+  <!-- ===================================================================== -->
+  <div class="view-section" id="view_restricoes">
+    <section class="card">
+      <div class="card-head">
+        <h2>
+          🛡️ Central de Diagnóstico, Timers de Resfriamento (Cooldown) & Sugestões Anti-Ban
+          <button class="help-btn" type="button" onclick="explicar('restricoes_timer')">❓ Como funciona a Quarentena?</button>
+        </h2>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn sm warn" type="button" onclick="simularRestricaoChip('conta_1')">🧪 Simular Alerta de Restrição (Teste)</button>
+          <button class="btn sm" type="button" onclick="carregarDashboard()">🔄 Atualizar Diagnóstico</button>
+        </div>
+      </div>
+
+      <!-- CARDS DE SUGESTÕES INTELIGENTES DE SAÚDE OPERACIONAL -->
+      <div class="glossary-grid" id="gridSugestoesSaude"></div>
+
+      <!-- LISTA DE CHIPS EM QUARENTENA COM TIMER REGRESSIVO AO VIVO -->
+      <h3 style="margin:6px 0 0;font-family:var(--f-head);text-transform:uppercase;letter-spacing:.7px">
+        ⏳ Chips Atualmente em Resfriamento / Restrição (Timer Regressivo Ao Vivo)
+      </h3>
+      <div id="boxChipsRestritosDetalhe" style="display:grid;gap:8px"></div>
+
+      <!-- HISTÓRICO COMPLETO DE ERROS E RESTRIÇÕES (data/restrictions_errors.log) -->
+      <h3 style="margin:8px 0 0;font-family:var(--f-head);text-transform:uppercase;letter-spacing:.7px">
+        📜 Log Detalhado de Erros, Quedas de Socket e Restrições (data/restrictions_errors.log)
+      </h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Data / Hora</th>
+              <th>Chip / Instância</th>
+              <th>Risco</th>
+              <th>Diagnóstico / Código</th>
+              <th>Timer Aplicado</th>
+              <th>Sugestão Automática de Mitigação</th>
+              <th>Ação</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyRestrictionsLog"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- VISÃO 5: TABELA COMPLETA DE LEADS (COM ENCAMINHAMENTO 1-CLIQUE)        -->
+  <!-- ===================================================================== -->
+  <div class="view-section" id="view_leads">
+    <section class="card">
+      <div class="table-toolbar">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <h2 style="margin:0;font-family:var(--f-head);font-size:16px;text-transform:uppercase">
+            📋 Base de Leads (<span id="lblTotalFiltrado">0</span> registros)
+          </h2>
+          <select class="inp" id="fStatus" style="width:auto" onchange="paginaAtual=1;carregarDashboard()">
+            <option value="todos">Todos os Status</option>
+            <option value="interessado">🔥 Interessados (1)</option>
+            <option value="respondeu">💬 Responderam Dúvida</option>
+            <option value="enviado">📤 Enviados</option>
+            <option value="novo">⏳ Novos (Na Fila)</option>
+            <option value="sem_whatsapp">📵 Sem WhatsApp</option>
+            <option value="opt_out">🚫 Opt-Out (Bloqueados)</option>
+          </select>
+          <select class="inp" id="fAccount" style="width:auto" onchange="paginaAtual=1;carregarDashboard()">
+            <option value="todas">Todos os 50 Chips</option>
+          </select>
+          <input class="inp" id="fBusca" placeholder="Buscar por ID, nome, telefone ou tag..." style="width:240px" oninput="debounceBusca()">
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <button class="btn sm" type="button" id="btnPrev" onclick="mudarPagina(-1)">◀ Anterior</button>
+          <span style="font-family:var(--f-mono);font-size:12px" id="lblPaginacao">Página 1</span>
+          <button class="btn sm" type="button" id="btnNext" onclick="mudarPagina(1)">Próxima ▶</button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Nome / Lead</th>
+              <th>Telefone (DDI +55)</th>
+              <th>Chip Origem</th>
+              <th>Status</th>
+              <th>Opt-Out</th>
+              <th>Última Interação & Resposta</th>
+              <th>Ações / Encaminhar p/ Consultor</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyLeads"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- VISÃO 6: SEGUNDA TELA PERMANENTE (NOC WALLBOARD DE MONITORAMENTO ATIVO)-->
+  <!-- ===================================================================== -->
+  <div class="view-section" id="view_segunda_tela">
+    <section class="card">
+      <div class="card-head">
+        <div>
+          <h2>📺 Monitor de Gerenciamento Ativo Permanente (Segunda Tela NOC · Auto-Refresh 3s)</h2>
+          <span style="font-family:var(--f-mono);font-size:11px;color:var(--muted)">
+            Projetado para permanecer aberto em um segundo monitor acompanhando os 50 chips, timers de restrição e chegada de leads quentes em tempo real.
+          </span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn sm brand" type="button" onclick="abrirSegundaTelaMonitor()">🗗 Destacar em Nova Janela (2º Monitor)</button>
+          <button class="btn sm" type="button" onclick="alternarModoNocLocal()">🌙 Alternar Tema Escuro</button>
+        </div>
+      </div>
+
+      <!-- MATRIZ COMPACTA DOS 50 CHIPS EM TEMPO REAL -->
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <strong style="font-family:var(--f-head);font-size:13.5px;text-transform:uppercase;letter-spacing:.7px">
+          📡 Matriz Ao Vivo das 50 Instâncias + Conta Admin (Clique em qualquer chip para abrir QR Code ou Detalhes)
+        </strong>
+        <div style="display:flex;gap:10px;font-family:var(--f-mono);font-size:11px">
+          <span>🟢 Conectado</span>
+          <span>🔵 Ativo no Pool</span>
+          <span>🔴 Em Restrição (Timer)</span>
+          <span>⚪ Standby</span>
+        </div>
+      </div>
+      <div class="noc-matrix" id="nocMatrix50"></div>
+
+      <div class="grid-2" style="margin-top:6px">
+        <!-- COLUNA ESQUERDA NOC: LEADS QUENTES E RESPOSTAS CHEGANDO AO VIVO -->
+        <div class="slot-box">
+          <strong style="font-family:var(--f-head);font-size:14px;text-transform:uppercase;color:var(--ok)">
+            🔥 Feed Ao Vivo: Leads Interessados (1) & Dúvidas Recentes
+          </strong>
+          <div id="nocHotLeadsFeed" style="display:grid;gap:6px;max-height:280px;overflow-y:auto"></div>
+        </div>
+        <!-- COLUNA DIREITA NOC: RADAR DE RESTRIÇÕES, TIMERS E SUGESTÕES -->
+        <div class="slot-box">
+          <strong style="font-family:var(--f-head);font-size:14px;text-transform:uppercase;color:var(--danger)">
+            🚨 Radar de Restrições, Timers de Cooldown & Sugestões do Sistema
+          </strong>
+          <div id="nocRestrictionsFeed" style="display:grid;gap:6px;max-height:280px;overflow-y:auto"></div>
+        </div>
+      </div>
+    </section>
+  </div>
 </div>
 
-<!-- MODAL DE EXPLICAÇÃO CONTEXTUAL (POPOVER DE AJUDA SIMPLES E DIRETA) -->
+<!-- STACK DE NOTIFICAÇÕES FLUTUANTES (TOASTS) -->
+<div class="toast-stack" id="toastStack"></div>
+
+<!-- MODAL DE EDIÇÃO INDIVIDUAL DE CHIP (OU CONTA ADMIN) -->
+<div class="modal-bg" id="modalEditarChip">
+  <div class="modal-card" style="max-width:560px">
+    <div class="modal-top">
+      <span id="editChipTitle">⚙️ Configurar Chip</span>
+      <button class="btn sm" type="button" onclick="fecharModal('modalEditarChip')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editChipId">
+      <div class="form-grid">
+        <div class="field">
+          <label>Nome / Identificação</label>
+          <input class="inp" id="editChipNome">
+        </div>
+        <div class="field">
+          <label>Nome da Instância Evolution</label>
+          <input class="inp" id="editChipInstance">
+        </div>
+        <div class="field">
+          <label>Número do Chip (Opcional · DDI +55)</label>
+          <input class="inp" id="editChipTel" placeholder="5511999990001">
+        </div>
+        <div class="field">
+          <label>WhatsApp do Consultor deste Chip</label>
+          <input class="inp" id="editChipConsultor" placeholder="5511988887777">
+        </div>
+        <div class="field">
+          <label>Limite Diário Anti-Ban (Msgs/Dia)</label>
+          <input type="number" class="inp" id="editChipLimit" value="60">
+        </div>
+        <div class="field">
+          <label>Pausa Preventiva (Timer Cooldown)</label>
+          <div style="display:flex;gap:4px">
+            <button class="btn sm warn" type="button" onclick="aplicarCooldownManual(30)">⏳ +30m</button>
+            <button class="btn sm warn" type="button" onclick="aplicarCooldownManual(120)">⏳ +2h</button>
+            <button class="btn sm ok" type="button" onclick="liberarQuarentenaChip(document.getElementById('editChipId').value)">🔓 Liberar</button>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
+        <button class="btn" type="button" onclick="fecharModal('modalEditarChip')">Cancelar</button>
+        <button class="btn wa" type="button" onclick="salvarEdicaoChipUnico()">💾 Salvar Configurações</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL ENCAMINHAR LEAD MANUALMENTE -->
+<div class="modal-bg" id="modalEncaminharLead">
+  <div class="modal-card" style="max-width:520px">
+    <div class="modal-top" style="background:var(--wa);color:#fff">
+      <span>↗️ Encaminhar Lead para Consultor</span>
+      <button class="btn sm" type="button" onclick="fecharModal('modalEncaminharLead')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field">
+          <label>Nome do Lead</label>
+          <input class="inp" id="fwLeadName" readonly>
+        </div>
+        <div class="field">
+          <label>Telefone do Lead</label>
+          <input class="inp" id="fwLeadPhone" readonly>
+        </div>
+        <div class="field full">
+          <label>WhatsApp do Consultor Destino (Deixe vazio p/ usar Regra Automática)</label>
+          <input class="inp" id="fwConsultantPhone" placeholder="Ex: 5511999999999">
+        </div>
+        <div class="field full">
+          <label>Observação / Contexto para o Consultor</label>
+          <textarea class="ta" id="fwLeadNotes" rows="3" placeholder="Ex: Cliente pediu cotação para 12 vidas no CNPJ..."></textarea>
+        </div>
+      </div>
+      <div id="fwFeedback" style="font-family:var(--f-mono);font-size:11.5px;color:var(--ok)"></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <button class="btn" type="button" onclick="fecharModal('modalEncaminharLead')">Fechar</button>
+        <button class="btn wa" type="button" onclick="confirmarEncaminhamentoLead()">🚀 Enviar p/ Consultor (Via Conta Admin / wa.me)</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CENTRAL DE NOTIFICAÇÕES -->
+<div class="modal-bg" id="modalNotificacoes">
+  <div class="modal-card" style="max-width:640px">
+    <div class="modal-top">
+      <span>🔔 Central de Notificações & Alertas Operacionais</span>
+      <button class="btn sm" type="button" onclick="fecharModal('modalNotificacoes')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="listaNotificacoesModal" style="display:grid;gap:8px;max-height:60vh;overflow-y:auto"></div>
+      <div style="display:flex;justify-content:space-between">
+        <button class="btn sm" type="button" onclick="notificacoes=[];atualizarBadgeNotif();fecharModal('modalNotificacoes')">🗑️ Limpar Alertas</button>
+        <button class="btn wa sm" type="button" onclick="fecharModal('modalNotificacoes')">Fechar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL DE EXPLICAÇÃO CONTEXTUAL -->
 <div class="modal-bg" id="modalAjuda">
   <div class="modal-card" style="max-width:600px">
     <div class="modal-top" style="background:var(--brand);color:#fff">
@@ -458,28 +810,25 @@ tr:hover td{background:#faf8f2}
     <div class="modal-body">
       <div class="help-box">
         <span class="help-tag" id="ajudaTermo">TERMO TÉCNICO</span>
-        <div id="ajudaTexto" style="font-size:13.5px;line-height:1.55;color:var(--ink)"></div>
+        <div id="ajudaTexto" style="font-size:13.5px;line-height:1.55"></div>
         <div class="help-tip" id="ajudaDica"></div>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
-        <button class="btn sm purple" type="button" onclick="fecharModal('modalAjuda');abrirModal('modalDicionario')">📖 Ver Todos os Termos (Dicionário Completo)</button>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <button class="btn sm purple" type="button" onclick="fecharModal('modalAjuda');abrirModal('modalDicionario')">📖 Ver Todos os Termos</button>
         <button class="btn wa sm" type="button" onclick="fecharModal('modalAjuda')">Entendi!</button>
       </div>
     </div>
   </div>
 </div>
 
-<!-- MODAL DICIONÁRIO COMPLETO & GUIA DE USO -->
+<!-- MODAL DICIONÁRIO COMPLETO -->
 <div class="modal-bg" id="modalDicionario">
   <div class="modal-card" style="max-width:960px">
     <div class="modal-top" style="background:var(--purple);color:#fff">
-      <span>📖 Guia Prático & Dicionário de Termos (Sem "Tecniquês")</span>
+      <span>📖 Guia Prático & Dicionário de Termos</span>
       <button class="btn sm" type="button" onclick="fecharModal('modalDicionario')">✕</button>
     </div>
     <div class="modal-body">
-      <div style="font-size:13px;color:var(--muted)">
-        Este guia traduz todos os termos técnicos do sistema para o dia a dia da sua operação comercial:
-      </div>
       <div class="glossary-grid" id="gridDicionario"></div>
       <div style="display:flex;justify-content:flex-end">
         <button class="btn wa" type="button" onclick="fecharModal('modalDicionario')">Fechar Guia</button>
@@ -496,18 +845,11 @@ tr:hover td{background:#faf8f2}
       <button class="btn sm" type="button" onclick="fecharModal('modalQrCode')">✕</button>
     </div>
     <div class="modal-body" style="text-align:center">
-      <div id="qrStatusText" style="font-family:var(--f-mono);font-size:12px;color:var(--muted)">
-        Solicitando QR Code à Evolution API...
-      </div>
-      <div class="qr-frame" id="qrContainer">
-        <span style="font-family:var(--f-mono);font-size:11.5px;color:var(--muted)">Carregando...</span>
-      </div>
+      <div id="qrStatusText" style="font-family:var(--f-mono);font-size:12px;color:var(--muted)">Solicitando QR Code...</div>
+      <div class="qr-frame" id="qrContainer"><span>Carregando...</span></div>
       <div id="qrPairingBox" style="font-family:var(--f-mono);font-size:12px;display:none"></div>
-      <div style="background:#eef4fb;border:1.5px solid var(--brand);padding:8px 10px;text-align:left;font-size:12px;line-height:1.4">
-        <b>💡 Como conectar seu celular:</b><br>
-        1. Abra o WhatsApp no celular do chip escolhido.<br>
-        2. Toque nos 3 pontinhos (ou Configurações) &gt; <b>Aparelhos conectados</b>.<br>
-        3. Toque em <b>Conectar um aparelho</b> e aponte a câmera para o QR Code acima.
+      <div style="background:var(--brand-soft);border:1.5px solid var(--brand);padding:8px 10px;text-align:left;font-size:12px;line-height:1.4;border-radius:5px">
+        <b>💡 Como conectar:</b> Abra o WhatsApp no celular &gt; <b>Aparelhos conectados</b> &gt; <b>Conectar um aparelho</b> e aponte para o QR Code acima (renova automaticamente a cada 28s).
       </div>
       <div style="display:flex;justify-content:space-between;gap:8px">
         <button class="btn danger sm" type="button" onclick="desconectarInstanciaAtual()">🔌 Desconectar Aparelho</button>
@@ -515,26 +857,6 @@ tr:hover td{background:#faf8f2}
           <button class="btn sm" type="button" onclick="atualizarQrCodeModal()">🔄 Atualizar QR Code</button>
           <button class="btn wa sm" type="button" onclick="fecharModal('modalQrCode')">Concluído</button>
         </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL GERENCIADOR DAS 5 INSTÂNCIAS EVOLUTION API -->
-<div class="modal-bg" id="modalContas">
-  <div class="modal-card">
-    <div class="modal-top">
-      <span>📲 Gerenciador dos 5 Chips Simultâneos · Evolution API</span>
-      <button class="btn sm" type="button" onclick="fecharModal('modalContas')">✕</button>
-    </div>
-    <div class="modal-body">
-      <div style="font-size:12.5px;color:var(--muted);background:#fff;border:1.5px solid var(--ink);padding:10px">
-        💡 <b>Dica rápida:</b> Cada "Slot" abaixo representa <b>1 aparelho/chip de WhatsApp</b>. Você pode ligar até 5 ao mesmo tempo. No campo <b>WhatsApp do Consultor</b>, coloque o número pessoal do vendedor que vai receber o aviso quando o cliente digitar <code>1</code> (Tenho interesse).
-      </div>
-      <div id="formCincoContas" style="display:grid;gap:10px"></div>
-      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:6px">
-        <button class="btn" type="button" onclick="fecharModal('modalContas')">Cancelar</button>
-        <button class="btn wa" type="button" onclick="salvarCincoContas()">💾 Salvar as 5 Instâncias</button>
       </div>
     </div>
   </div>
@@ -550,46 +872,28 @@ tr:hover td{background:#faf8f2}
     <div class="modal-body">
       <div class="form-grid">
         <div class="field">
-          <label>
-            <span>EVOLUTION_API_URL</span>
-            <button class="help-circle" type="button" onclick="explicar('evo_url')">?</button>
-          </label>
+          <label>EVOLUTION_API_URL</label>
           <input class="inp" id="cfgEvoUrl" placeholder="http://localhost:8081">
         </div>
         <div class="field">
-          <label>
-            <span>EVOLUTION_API_KEY (Senha Global)</span>
-            <button class="help-circle" type="button" onclick="explicar('evo_key')">?</button>
-          </label>
+          <label>EVOLUTION_API_KEY (Senha Global)</label>
           <input class="inp" id="cfgEvoKey" placeholder="lead_manager_evo_key_2026">
         </div>
         <div class="field">
-          <label>
-            <span>CONSULTANT_PHONE_NUMBER (Consultor Padrão)</span>
-            <button class="help-circle" type="button" onclick="explicar('consultor_phone')">?</button>
-          </label>
-          <input class="inp" id="cfgConsultantPhone" placeholder="Ex: 5527999999999">
+          <label>CONSULTANT_PHONE_NUMBER (Consultor Padrão)</label>
+          <input class="inp" id="cfgConsultantPhone" placeholder="Ex: 5511999999999">
         </div>
         <div class="field">
-          <label>
-            <span>DAILY_MESSAGE_LIMIT (Limite por Chip)</span>
-            <button class="help-circle" type="button" onclick="explicar('cota_diaria')">?</button>
-          </label>
+          <label>DAILY_MESSAGE_LIMIT (Limite por Chip)</label>
           <input type="number" class="inp" id="cfgDailyLimit" value="60">
         </div>
         <div class="field">
-          <label>
-            <span>MIN_DELAY (Espera Mínima em seg)</span>
-            <button class="help-circle" type="button" onclick="explicar('jitter_antiban')">?</button>
-          </label>
-          <input type="number" class="inp" id="cfgMinDelay" value="6" step="1">
+          <label>MIN_DELAY (Espera Mínima em seg)</label>
+          <input type="number" class="inp" id="cfgMinDelay" value="15" step="1">
         </div>
         <div class="field">
-          <label>
-            <span>MAX_DELAY (Espera Máxima em seg)</span>
-            <button class="help-circle" type="button" onclick="explicar('jitter_antiban')">?</button>
-          </label>
-          <input type="number" class="inp" id="cfgMaxDelay" value="15" step="1">
+          <label>MAX_DELAY (Espera Máxima em seg)</label>
+          <input type="number" class="inp" id="cfgMaxDelay" value="35" step="1">
         </div>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
@@ -608,94 +912,58 @@ tr:hover td{background:#faf8f2}
       <button class="btn sm" type="button" onclick="fecharModal('modalImportar')">✕</button>
     </div>
     <div class="modal-body">
-      <!-- OPÇÕES COMUNS A TODAS AS IMPORTAÇÕES -->
-      <div style="background:#fff;border:1.5px solid var(--ink);padding:10px 12px;display:grid;gap:8px">
-        <div style="font-family:var(--f-head);font-size:12.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--wa-dark);font-weight:700;display:flex;justify-content:space-between;align-items:center">
-          <span>⚙️ Opções de Higienização & Destino (Valem para qualquer aba abaixo)</span>
-          <button class="help-btn" type="button" onclick="explicar('importacao_opcoes')">❓ Como funciona a deduplicação?</button>
-        </div>
+      <div class="slot-box">
         <div class="form-grid" style="grid-template-columns:repeat(3,1fr)">
           <div class="field">
-            <label>
-              <span>Etiqueta / Origem (Tag)</span>
-              <button class="help-circle" type="button" onclick="explicar('importacao_tag')">?</button>
-            </label>
+            <label>Etiqueta / Origem (Tag)</label>
             <input class="inp" id="impGlobalTag" placeholder="Ex: Google Maps, Sindicato...">
           </div>
           <div class="field">
-            <label>
-              <span>Pré-fixar em um Chip?</span>
-              <button class="help-circle" type="button" onclick="explicar('round_robin')">?</button>
-            </label>
+            <label>Pré-fixar em um Chip?</label>
             <select class="inp" id="impGlobalConta">
-              <option value="">🔄 Fila Geral (Revezar nos 5 Chips)</option>
-              <option value="conta_1">📲 Fixar no Chip #1 (chip_1)</option>
-              <option value="conta_2">📲 Fixar no Chip #2 (chip_2)</option>
-              <option value="conta_3">📲 Fixar no Chip #3 (chip_3)</option>
-              <option value="conta_4">📲 Fixar no Chip #4 (chip_4)</option>
-              <option value="conta_5">📲 Fixar no Chip #5 (chip_5)</option>
+              <option value="">🔄 Fila Geral (Revezar nos 50 Chips)</option>
             </select>
           </div>
           <div class="field">
-            <label>
-              <span>Filtro de Tipo de Número</span>
-              <button class="help-circle" type="button" onclick="explicar('importacao_fixo_celular')">?</button>
-            </label>
+            <label>Filtro de Tipo de Número</label>
             <select class="inp" id="impGlobalMobile">
-              <option value="false">📞 Celulares + Fixos Comerciais (WhatsApp Business)</option>
-              <option value="true">📱 Apenas Celulares (Ignorar Fixos)</option>
+              <option value="false">📞 Celulares + Fixos Comerciais</option>
+              <option value="true">📱 Apenas Celulares</option>
             </select>
           </div>
         </div>
       </div>
 
-      <!-- SELETOR DE ABAS DAS 6 FORMAS DE IMPORTAÇÃO -->
       <div style="display:flex;flex-wrap:wrap;gap:6px;border-bottom:2px solid var(--ink);padding-bottom:8px">
-        <button class="btn sm wa" type="button" id="tabBtn_arquivos" onclick="trocarAbaImportacao('arquivos')">📂 1. Upload de Arquivo (.XLSX/.CSV/.VCF)</button>
-        <button class="btn sm" type="button" id="tabBtn_colar" onclick="trocarAbaImportacao('colar')">📋 2. Colar do Excel / Manual</button>
-        <button class="btn sm" type="button" id="tabBtn_extrator" onclick="trocarAbaImportacao('extrator')">🔍 3. Caçador de Telefones (Texto Bruto)</button>
-        <button class="btn sm" type="button" id="tabBtn_cnpj" onclick="trocarAbaImportacao('cnpj')">🏢 4. Buscar por CNPJ (Receita)</button>
-        <button class="btn sm" type="button" id="tabBtn_url" onclick="trocarAbaImportacao('url')">🌐 5. Link Google Sheets / URL</button>
+        <button class="btn sm wa" type="button" id="tabBtn_arquivos" onclick="trocarAbaImportacao('arquivos')">📂 1. Upload (.XLSX/.CSV/.VCF)</button>
+        <button class="btn sm" type="button" id="tabBtn_colar" onclick="trocarAbaImportacao('colar')">📋 2. Colar do Excel</button>
+        <button class="btn sm" type="button" id="tabBtn_extrator" onclick="trocarAbaImportacao('extrator')">🔍 3. Caçador de Telefones</button>
+        <button class="btn sm" type="button" id="tabBtn_cnpj" onclick="trocarAbaImportacao('cnpj')">🏢 4. Buscar por CNPJ</button>
+        <button class="btn sm" type="button" id="tabBtn_url" onclick="trocarAbaImportacao('url')">🌐 5. Link Google Sheets</button>
         <button class="btn sm" type="button" id="tabBtn_evolution" onclick="trocarAbaImportacao('evolution')">📲 6. Puxar Agenda do Chip</button>
       </div>
 
-      <!-- ABA 1: UPLOAD DE ARQUIVOS (.CSV, .XLSX, .VCF, .JSON, .TXT) -->
       <div id="tabPane_arquivos" class="slot-box">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
-          <strong style="font-family:var(--f-head);font-size:14px;text-transform:uppercase">
-            📂 Enviar Planilhas Excel (.xlsx), CSV (.csv), Contatos de Celular (.vcf), JSON ou TXT
-          </strong>
-          <button class="help-btn" type="button" onclick="explicar('imp_arquivos')">❓ Quais arquivos são aceitos?</button>
-        </div>
-        <p style="margin:0;font-size:12px;color:var(--muted)">
-          Você pode selecionar 1 ou vários arquivos de uma vez. O sistema descobre sozinho em qual coluna estão o Nome e o Telefone!
-        </p>
-        <input type="file" class="inp" id="impArquivosInput" multiple accept=".csv,.xlsx,.txt,.tsv,.vcf,.json" style="padding:14px;border:2px dashed var(--wa);background:#f6fbf9;cursor:pointer">
+        <strong>📂 Enviar Planilhas Excel (.xlsx), CSV (.csv), Contatos de Celular (.vcf), JSON ou TXT</strong>
+        <input type="file" class="inp" id="impArquivosInput" multiple accept=".csv,.xlsx,.txt,.tsv,.vcf,.json" style="padding:14px;border:2px dashed var(--wa);cursor:pointer">
         <div style="display:flex;justify-content:flex-end">
           <button class="btn wa" type="button" onclick="executarImportacaoArquivos()">📥 Processar e Importar Arquivo(s)</button>
         </div>
       </div>
 
-      <!-- ABA 2: COLAR DO EXCEL / GOOGLE SHEETS / MANUAL -->
       <div id="tabPane_colar" class="slot-box" style="display:none">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
-          <strong style="font-family:var(--f-head);font-size:14px;text-transform:uppercase">
-            📋 Copiar e Colar Direto do Excel / Google Sheets (ou Cadastro Individual)
-          </strong>
-          <button class="help-btn" type="button" onclick="explicar('imp_colar')">❓ Como copiar do Excel?</button>
-        </div>
         <div class="form-grid">
           <div class="field">
             <label>Adicionar 1 Contato Rápido (Nome)</label>
             <input class="inp" id="impNome" placeholder="Ex: Metalúrgica Vitória Ltda">
           </div>
           <div class="field">
-            <label>Telefone (Qualquer formato)</label>
+            <label>Telefone</label>
             <input class="inp" id="impTelefone" placeholder="Ex: (27) 99888-7766">
           </div>
           <div class="field full">
-            <label>Ou Selecione as Colunas no Excel (Ctrl+C) e Cole Aqui (Ctrl+V)</label>
-            <textarea class="ta" id="impLote" rows="5" placeholder="Padaria Pão Dourado	(27) 99911-2233&#10;Clínica Sorriso;27999445566&#10;Oficina Brasil,5527988776655"></textarea>
+            <label>Ou Cole Colunas do Excel (Ctrl+C -> Ctrl+V)</label>
+            <textarea class="ta" id="impLote" rows="5"></textarea>
           </div>
         </div>
         <div style="display:flex;justify-content:flex-end">
@@ -703,87 +971,43 @@ tr:hover td{background:#faf8f2}
         </div>
       </div>
 
-      <!-- ABA 3: EXTRATOR INTELIGENTE DE TEXTO BRUTO (CAÇADOR DE TELEFONES REGEX) -->
       <div id="tabPane_extrator" class="slot-box" style="display:none">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
-          <strong style="font-family:var(--f-head);font-size:14px;text-transform:uppercase">
-            🔍 Caçador Inteligente de Telefones (Cole Qualquer Texto Bagunçado)
-          </strong>
-          <button class="help-btn" type="button" onclick="explicar('imp_extrator')">❓ Como o Caçador funciona?</button>
-        </div>
-        <p style="margin:0;font-size:12px;color:var(--muted)">
-          Copie uma página inteira do <b>Google Maps</b>, catálogo de empresas, PDF, e-mail ou lista de grupo de WhatsApp e cole abaixo. O robô garimpa todos os telefones com DDD automaticamente:
-        </p>
-        <textarea class="ta" id="impTextoBruto" rows="6" placeholder="Exemplo de texto bagunçado:&#10;Restaurante Sabor Capixaba - Aberto até 15h - Tel: (27) 99812-3344 - Vitória/ES&#10;Contabilidade Exata Ltda | Contato WhatsApp: 27 98877-6655 falar com Marcos"></textarea>
+        <strong>🔍 Caçador Inteligente de Telefones (Cole Qualquer Texto do Google Maps, PDF ou Lista)</strong>
+        <textarea class="ta" id="impTextoBruto" rows="6"></textarea>
         <div style="display:flex;justify-content:flex-end">
           <button class="btn wa" type="button" onclick="importarNovosLeads('texto_bruto')">🔍 Garimpar Telefones e Importar</button>
         </div>
       </div>
 
-      <!-- ABA 4: BUSCA AUTOMÁTICA POR LISTA DE CNPJs (RECEITA FEDERAL / BRASILAPI) -->
       <div id="tabPane_cnpj" class="slot-box" style="display:none">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
-          <strong style="font-family:var(--f-head);font-size:14px;text-transform:uppercase">
-            🏢 Enriquecimento Automático por CNPJ (Consulta Receita Federal / BrasilAPI)
-          </strong>
-          <button class="help-btn" type="button" onclick="explicar('imp_cnpj')">❓ Como funciona a busca por CNPJ?</button>
-        </div>
-        <p style="margin:0;font-size:12px;color:var(--muted)">
-          Cole até 25 CNPJs por vez (com ou sem pontuação). O sistema consulta gratuitamente os dados públicos da Receita Federal, puxa a <b>Razão Social / Nome Fantasia</b> + <b>Telefones cadastrados</b> e salva na sua fila:
-        </p>
-        <textarea class="ta" id="impCnpjs" rows="5" placeholder="Cole os CNPJs aqui (um por linha ou misturados no texto):&#10;00.000.000/0001-91&#10;33.000.167/0001-01"></textarea>
+        <strong>🏢 Enriquecimento Automático por CNPJ (Consulta Receita Federal / BrasilAPI)</strong>
+        <textarea class="ta" id="impCnpjs" rows="5" placeholder="Cole até 25 CNPJs por vez..."></textarea>
         <div style="display:flex;justify-content:flex-end">
-          <button class="btn wa" type="button" id="btnImpCnpj" onclick="executarImportacaoCnpj()">🏢 Consultar CNPJs na Receita e Importar</button>
+          <button class="btn wa" type="button" id="btnImpCnpj" onclick="executarImportacaoCnpj()">🏢 Consultar CNPJs e Importar</button>
         </div>
       </div>
 
-      <!-- ABA 5: LINK DO GOOGLE SHEETS PÚBLICO / URL CSV -->
       <div id="tabPane_url" class="slot-box" style="display:none">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
-          <strong style="font-family:var(--f-head);font-size:14px;text-transform:uppercase">
-            🌐 Importar Direto de Link do Google Sheets ou URL CSV
-          </strong>
-          <button class="help-btn" type="button" onclick="explicar('imp_url')">❓ Como usar link do Google Planilhas?</button>
-        </div>
-        <p style="margin:0;font-size:12px;color:var(--muted)">
-          Cole o link de uma planilha do <b>Google Sheets</b> (configurada como <i>"Qualquer pessoa com o link pode ver"</i>) ou link direto de um arquivo `.csv` na nuvem:
-        </p>
+        <strong>🌐 Importar Direto de Link do Google Sheets ou URL CSV</strong>
         <input class="inp" id="impUrlLink" placeholder="https://docs.google.com/spreadsheets/d/SEU_ID_AQUI/edit?usp=sharing">
         <div style="display:flex;justify-content:flex-end">
-          <button class="btn wa" type="button" onclick="executarImportacaoUrl()">🌐 Baixar Planilha do Link e Importar</button>
+          <button class="btn wa" type="button" onclick="executarImportacaoUrl()">🌐 Baixar Planilha e Importar</button>
         </div>
       </div>
 
-      <!-- ABA 6: PUXAR CONTATOS DA AGENDA DO WHATSAPP CONECTADO (EVOLUTION API) -->
       <div id="tabPane_evolution" class="slot-box" style="display:none">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
-          <strong style="font-family:var(--f-head);font-size:14px;text-transform:uppercase">
-            📲 Sincronizar Contatos e Conversas Direto do Aparelho Conectado
-          </strong>
-          <button class="help-btn" type="button" onclick="explicar('imp_evolution')">❓ Como funciona puxar da Agenda?</button>
-        </div>
-        <p style="margin:0;font-size:12px;color:var(--muted)">
-          Puxa automaticamente todos os contatos salvos e conversas individuais de um dos seus 5 chips já conectados via QR Code na Evolution API (ignorando grupos):
-        </p>
         <div class="form-grid">
           <div class="field">
             <label>Escolher Chip Conectado na Evolution API</label>
-            <select class="inp" id="impEvoChip">
-              <option value="conta_1">📲 Chip #1 (chip_1)</option>
-              <option value="conta_2">📲 Chip #2 (chip_2)</option>
-              <option value="conta_3">📲 Chip #3 (chip_3)</option>
-              <option value="conta_4">📲 Chip #4 (chip_4)</option>
-              <option value="conta_5">📲 Chip #5 (chip_5)</option>
-            </select>
+            <select class="inp" id="impEvoChip"></select>
           </div>
           <div class="field" style="justify-content:flex-end">
-            <button class="btn wa" type="button" onclick="executarImportacaoEvolution()">📲 Puxar Contatos deste Chip Agora</button>
+            <button class="btn wa" type="button" onclick="executarImportacaoEvolution()">📲 Puxar Contatos deste Chip</button>
           </div>
         </div>
       </div>
 
-      <!-- RELATÓRIO DE RESULTADO DA IMPORTAÇÃO -->
-      <div id="impResultadoBox" style="display:none;background:#eaf7ef;border:2px solid var(--ok);padding:10px 12px;font-family:var(--f-mono);font-size:12px"></div>
+      <div id="impResultadoBox" style="display:none;background:var(--ok-soft);border:2px solid var(--ok);padding:10px 12px;font-family:var(--f-mono);font-size:12px;border-radius:5px"></div>
     </div>
   </div>
 </div>
@@ -794,248 +1018,217 @@ const porPagina=50;
 let totalPaginas=1;
 let ocultarTelefones=false;
 let timerBusca=null;
+let adminAccountCache={id:'conta_admin',slot:0,nome:'👑 Conta Principal Administradora',instance_name:'chip_admin',connection_status:'close'};
 let contasCache=[];
+let restrictionsCache=[];
+let routingCache={};
+let eventsCache=[];
+let leadsCache=[];
 let qrContaAtualId='conta_1';
+let timerQrRefresh=null;
+let visaoAtual='operacao';
+let notificacoes=[];
+let ultimoEventoTimestamp='';
+let somAtivo=true;
 
-/* BASE DE CONHECIMENTO DE EXPLICAÇÕES (EM PORTUGUÊS CLARO E ACESSÍVEL) */
 const EXPLICACOES = {
+  conta_admin: {
+    titulo: "👑 Conta Principal Administradora (Não Prospecta)",
+    termo: "ISOLAMENTO DE RISCO ENTRE ADMINISTRAÇÃO E PROSPECÇÃO",
+    texto: "A <b>Conta Principal Administradora (chip_admin)</b> tem uma trava rígida no código que <b>impede 100% que ela envie mensagens frias de prospecção</b>.<br><br>O papel dela é exclusivamente <b>administrar a operação</b>: encaminhar os avisos de Leads Quentes (🔥 Opção 1) e alertas de restrição para o WhatsApp dos seus consultores!",
+    dica: "💡 Assim o seu número principal de gestão nunca corre risco de sofrer denúncias de desconhecidos!"
+  },
+  restricoes_timer: {
+    titulo: "Aviso de Restrição com Timer Regressivo & Sugestão",
+    termo: "COOLDOWN AUTOMÁTICO (QUARENTENA INTELIGENTE)",
+    texto: "Quando qualquer um dos 50 chips sofre uma queda de socket (HTTP 428), desconexão (401/403) ou erro de envio (500):<br>1. O sistema <b>retira aquele chip do rodízio imediatamente</b>.<br>2. Inicia um <b>Timer Regressivo de Resfriamento (ex: 20m, 30m ou 2h)</b>.<br>3. Exibe o diagnóstico exato e uma <b>Sugestão Prática</b> do que fazer para recuperar a reputação do chip.",
+    dica: "💡 Enquanto o timer estiver rodando, os outros chips ativos continuam trabalhando normalmente sem interromper sua operação!"
+  },
+  encaminhamento_leads: {
+    titulo: "Opções de Encaminhamento de Leads",
+    termo: "ROTEAMENTO AUTOMÁTICO E FILA DE VENDEDORES",
+    texto: "Você pode escolher como os clientes interessados (que respondem 1) são distribuídos:<br>• <b>Fixo por Chip</b>: manda para o consultor daquele chip.<br>• <b>Fila Rotativa (Round-Robin de Consultores)</b>: distribui 1 lead para cada vendedor da sua equipe em sequência justa.<br>• <b>Webhook CRM</b>: envia os dados em tempo real para o seu CRM ou n8n.",
+    dica: "💡 Você também pode clicar no botão '↗️ Encaminhar' em qualquer linha da tabela de leads!"
+  },
   dry_run: {
     titulo: "Modo de Envio: DRY-RUN vs Envio Real",
-    termo: "DRY-RUN (Voo Simulado / Modo de Teste)",
-    texto: "<b>DRY-RUN</b> significa <i>'Execução a Seco'</i> (Simulação). Quando está selecionado, o sistema faz toda a rotina (escolhe os leads, alterna entre os 5 chips, registra no painel), mas <b>NÃO envia mensagens de verdade para o celular dos clientes</b>.<br><br>Já a opção <b>⚡ Envio Real via Evolution API</b> dispara as mensagens de verdade usando os aparelhos conectados via QR Code.",
-    dica: "💡 Use sempre o DRY-RUN primeiro para conferir se a mensagem e a divisão entre os chips ficaram do jeito que você quer antes de mudar para Envio Real."
+    termo: "SIMULAÇÃO SEGURA vs PRODUÇÃO",
+    texto: "No modo <b>DRY-RUN</b>, o sistema testa toda a distribuição entre os 50 chips sem enviar mensagens reais.<br>No modo <b>Envio Real</b>, ele verifica na Evolution API quais chips estão realmente <code>🟢 CONECTADOS</code> e consulta o histórico do aparelho para nunca repetir envios.",
+    dica: "💡 Chips pausados ou com Timer de Restrição ativo são pulados automaticamente."
   },
   round_robin: {
-    titulo: "Roteamento Round-Robin (Revezamento de Chips)",
-    termo: "ROUND-ROBIN (Distribuição em Rodízio)",
-    texto: "<b>Round-Robin</b> é um sistema de revezamento justo entre os seus chips ativos.<br><br>Por exemplo, se você tem <b>3 chips ativos</b> e dispara um lote de 30 leads:<br>• O Lead #1 sai pelo <b>Chip 1</b><br>• O Lead #2 sai pelo <b>Chip 2</b><br>• O Lead #3 sai pelo <b>Chip 3</b><br>• O Lead #4 volta para o <b>Chip 1</b>, e assim por diante.",
-    dica: "💡 Isso divide o esforço entre vários aparelhos: em vez de mandar 150 mensagens num único chip (risco alto de bloqueio), você manda 30 em cada um dos 5 chips!"
+    titulo: "Roteamento Round-Robin (Até 50 Chips Simultâneos)",
+    termo: "DISTRIBUIÇÃO EM RODÍZIO",
+    texto: "Alterna cada envio entre todos os chips marcados como <b>🟢 ATIVO</b> que estejam livres de restrição. Com até 50 chips simultâneos, você dilui totalmente o volume por aparelho.",
+    dica: "💡 Use o botão '✅ Ativar Apenas Conectados' na aba Matriz 50 Chips para ativar automaticamente só os aparelhos que já leram o QR Code!"
   },
   warmup_lote: {
-    titulo: "Limite do Lote & Aquecimento de Chip (Warm-Up)",
-    termo: "WARM-UP (Aquecimento Gradual)",
-    texto: "<b>Limite do Lote</b> define quantas pessoas vão receber mensagem agora quando você clicar no botão Disparar.<br><br><b>Warm-Up (Aquecimento)</b> é a prática de começar devagar com um chip novo (ex: 20 a 30 mensagens no 1º dia, 40 no 2º dia, 60 no 3º dia) para o algoritmo do WhatsApp confiar no seu número.",
-    dica: "💡 Para chips novos, dispare pequenos lotes de 10 a 20 leads por rodada, algumas vezes ao dia."
+    titulo: "Limite do Lote & Warm-Up",
+    termo: "AQUECIMENTO GRADUAL DE CHIPS",
+    texto: "Define quantos leads serão abordados nesta rodada. Para chips novos, dispare pequenos lotes (5 a 15 por vez) com intervalo alto.",
+    dica: "💡 O limite do lote conta todas as tentativas da rodada para proteger seus chips."
   },
   jitter_antiban: {
-    titulo: "Jitter Anti-Ban & Efeito 'Digitando...'",
-    termo: "JITTER (Tempo de Espera Aleatório entre Mensagens)",
-    texto: "Se um robô manda mensagem exatamente a cada 5,0 segundos cravados, o WhatsApp percebe que é automação e pode banir o chip.<br><br>O <b>Jitter</b> resolve isso sorteando um tempo diferente a cada envio entre o <b>Mínimo</b> e o <b>Máximo</b> que você definir (ex: entre 6s e 15s: uma espera 7s, a próxima 14s, a outra 9s). Além disso, antes de enviar, ele mostra <i>'Digitando...'</i> para o cliente.",
-    dica: "💡 Para envios reais seguros, recomendamos deixar o Mínimo em 8 segundos e o Máximo em 20 segundos."
+    titulo: "Jitter Anti-Ban & Presença 'Digitando...'",
+    termo: "INTERVALO HUMANO VARIÁVEL",
+    texto: "Sorteia um tempo de espera aleatório entre o Mínimo e o Máximo (ex: entre 15s e 35s) a cada mensagem e exibe <i>'Digitando...'</i> antes de enviar.",
+    dica: "💡 Nunca use delays menores que 12 segundos em prospecção fria."
   },
   trava_horario: {
-    titulo: "Trava de Horário Comercial (--force-hours)",
-    termo: "JANELA COMERCIAL (Seg-Sex das 8h às 18h)",
-    texto: "Esta proteção impede que você dispare campanhas por engano tarde da noite ou no fim de semana, o que irrita clientes e gera denúncias de Spam no WhatsApp.<br><br>A opção <b>Ignorar trava (--force-hours)</b> serve para quando você está testando o sistema fora do expediente.",
-    dica: "💡 Quando for rodar para clientes reais durante o dia, deixe em 'Respeitar estritamente janela comercial'."
+    titulo: "Trava de Horário Comercial",
+    termo: "PROTEÇÃO DE EXPEDIENTE (8h às 18h)",
+    texto: "Impede disparos fora do horário comercial (noites e fins de semana), reduzindo drasticamente denúncias de spam.",
+    dica: "💡 Use '--force-hours' apenas para testes rápidos."
   },
   mensagem_variaveis: {
-    titulo: "Personalização da Mensagem & CTA (1 ou 2)",
-    termo: "VARIÁVEIS {nome} / {primeiro_nome} + CTA",
-    texto: "Você pode escrever <code>{primeiro_nome}</code> ou <code>{nome}</code> no texto da mensagem: o sistema troca automaticamente pelo nome da empresa/contato que está na planilha.<br><br>No final da mensagem, usamos o <b>CTA (Chamada para Ação)</b> pedindo para digitar <b>1</b> (Quero orçamento) ou <b>2</b> (Não quero mais mensagens).",
-    dica: "💡 Quando o cliente responde um número simples (1 ou 2), a taxa de resposta dobra e o robô consegue classificar sozinho!"
-  },
-  pool_5_chips: {
-    titulo: "Pool Evolution API · 5 Chips Simultâneos",
-    termo: "MULTI-INSTÂNCIA (Até 5 Aparelhos de WhatsApp)",
-    texto: "Aqui você controla até <b>5 números de WhatsApp trabalhando juntos</b>:<br>• <b>Botão 🟢 ATIVO / ⚪ PAUSADO</b>: escolhe se aquele chip participa ou não dos disparos em grupo.<br>• <b>Botão 📱 QR Code</b>: abre o código na tela para você conectar o WhatsApp do seu celular.<br>• <b>Barra Cota Anti-Ban</b>: mostra quantas mensagens aquele chip já enviou hoje.",
-    dica: "💡 Se um chip atingir a cota diária dele (ex: 60/60), o sistema pula ele automaticamente e continua enviando pelos outros chips ativos!"
-  },
-  sincronizar_status: {
-    titulo: "Botão: Sincronizar Status Evolution",
-    termo: "HEALTH CHECK DE CONEXÃO DOS APARELHOS",
-    texto: "Pergunta em tempo real para o motor da <b>Evolution API</b> quais celulares estão com o WhatsApp conectado (<code>🟢 CONECTADO</code>), quais estão aguardando leitura do código (<code>🟡 PAREANDO QR</code>) e quais estão desconectados.",
-    dica: "💡 Clique aqui após ler o QR Code no celular para confirmar que o status mudou para 🟢 CONECTADO."
-  },
-  cota_diaria: {
-    titulo: "Cota Diária Anti-Ban por Chip",
-    termo: "DAILY LIMIT (Limite Diário de Segurança)",
-    texto: "É o número máximo de abordagens frias que cada chip pode fazer em um único dia (padrão: 60 a 100 por chip).<br><br>O contador zera sozinho toda meia-noite, mas você também pode clicar em <b>🔄 Zerar Cota Diária</b> caso queira reiniciar a contagem manualmente.",
-    dica: "💡 Com 5 chips configurados para 60 envios/dia cada, você aborda 300 empresas por dia com segurança total."
+    titulo: "Personalização & Spintax Anti-Ban",
+    termo: "VARIÁVEIS {nome} E ROTAÇÃO DE SAUDAÇÕES",
+    texto: "Você pode usar <code>{nome}</code>, <code>{primeiro_nome}</code> e blocos Spintax como <code>{Olá|Oi|Tudo bem?}</code>. O sistema alterna automaticamente a saudação a cada envio para evitar mensagens idênticas.",
+    dica: "💡 Textos variados têm entregabilidade muito maior no WhatsApp."
   },
   webhook_geral: {
-    titulo: "Receptor Webhook (O 'Ouvido' Automático do Sistema)",
-    termo: "WEBHOOK / MESSAGES_UPSERT",
-    texto: "<b>Webhook</b> é um aviso instantâneo: no exato segundo em que um cliente responde no WhatsApp, a Evolution API avisa este painel.<br><br>O sistema lê a resposta, descobre qual dos 5 chips conversou com aquele cliente, responde educadamente e atualiza a planilha sozinho, sem você precisar olhar celular por celular!",
-    dica: "💡 Você não precisa configurar nada no celular: ao conectar o QR Code, o Webhook já fica ligado automaticamente."
+    titulo: "Receptor Webhook Inteligente",
+    termo: "TRIAGEM AUTOMÁTICA + FILTRO PESSOAL",
+    texto: "Lê as respostas dos clientes em tempo real, ignora conversas pessoais que não estão na planilha e só envia a resposta automática na 1ª interação do lead.",
+    dica: "💡 Quando o lead responde 1, a Conta Principal Administradora avisa seu consultor na hora!"
   },
   nono_digito: {
     titulo: "Casamento Inteligente de DDI +55 e 9º Dígito",
-    termo: "NORMALIZAÇÃO DE TELEFONE BRASILEIRO",
-    texto: "No Brasil, muitas planilhas têm telefones sem o <code>55</code> na frente ou com/sem o <b>nono dígito (9)</b>, e o WhatsApp às vezes remove o 9º dígito em DDDs fora de SP/RJ.<br><br>Nosso sistema compara automaticamente o DDD + os 8 últimos dígitos. Assim, mesmo que na planilha esteja <code>11 90000-0001</code> e o WhatsApp devolva <code>551100000001</code>, ele encontra o lead certo!",
-    dica: "💡 Ao importar números novos, pode colar com parênteses, traços ou espaços — o sistema limpa tudo sozinho."
-  },
-  instancia_receptora: {
-    titulo: "Instância Evolution Receptora",
-    termo: "ROTEAMENTO POR CHIP DE ORIGEM",
-    texto: "Cada chip tem um nome técnico na Evolution API (<code>chip_1</code> até <code>chip_5</code>). Quando um cliente responde, o sistema sabe exatamente por qual chip ele foi abordado e responde usando <b>aquele mesmo chip</b>.",
-    dica: "💡 Na simulação, deixe em 'Auto-detectar pela planilha' que ele descobre sozinho qual chip enviou mensagem para aquele lead."
-  },
-  push_name: {
-    titulo: "O que é pushName (Nome do Perfil)?",
-    termo: "PUSH NAME (Nome Público do WhatsApp)",
-    texto: "Na sua planilha original, muitos contatos estão apenas como <i>'Lead 1'</i>, <i>'Lead 2'</i>.<br><br>Quando a pessoa responde pelo WhatsApp, a Evolution API captura o <b>pushName</b> — que é o nome real que a pessoa cadastrou no perfil do WhatsApp dela (ex: <i>'Carlos Silva - Padaria Pão Quente'</i>) — e atualiza o nome na sua planilha automaticamente!",
-    dica: "💡 E esse nome real já vai direto no alerta enviado para o WhatsApp do seu consultor."
+    termo: "DEDUPLICAÇÃO E RECONHECIMENTO BR",
+    texto: "Compara DDD + 8 dígitos finais tanto na planilha quanto no histórico do aparelho (<code>/chat/findMessages</code>), evitando duplicidade mesmo quando o WhatsApp omite o 9º dígito.",
+    dica: "💡 Funciona automaticamente em todas as 50 instâncias."
   },
   triagem_1_2: {
-    titulo: "Triagem Automática: Opção 1, Opção 2 ou Dúvida Livre",
-    termo: "CLASSIFICAÇÃO AUTOMÁTICA DE RESPOSTAS",
-    texto: "Veja o que o robô faz sozinho quando o cliente responde:<br><br>🔥 <b>Se responder '1' (Quero orçamento):</b><br>1. Muda o status na planilha para <b>Interessado</b>.<br>2. Responde ao cliente que um consultor já vai atendê-lo.<br>3. Manda um alerta no WhatsApp pessoal do seu Consultor com um link clicável (<code>wa.me</code>) para abrir a conversa na hora!<br><br>🚫 <b>Se responder '2', 'sair' ou 'não':</b><br>1. Marca como <b>Opt-Out (Bloqueado)</b> na planilha para nunca mais enviar mensagens para ele.<br><br>💬 <b>Se escrever qualquer outra frase/dúvida:</b><br>1. Marca como <b>Respondeu</b> e envia o texto da dúvida para o WhatsApp do seu Consultor assumir a conversa.",
-    dica: "💡 Use os 3 botões de teste ('1️⃣ Interesse', '2️⃣ Opt-Out', '💬 Dúvida Livre') para ver isso acontecendo ao vivo na tabela abaixo!"
+    titulo: "Triagem Automática: 1, 2 ou Dúvida Livre",
+    termo: "CLASSIFICAÇÃO INSTANTÂNEA",
+    texto: "• <b>1</b>: Marca como Interessado 🔥 e encaminha ao consultor.<br>• <b>2</b>: Marca como Opt-Out 🚫 e bloqueia novos envios.<br>• <b>Outro texto</b>: Marca como Respondeu 💬 e encaminha a pergunta ao consultor.",
+    dica: "💡 Teste agora mesmo clicando nos botões 1️⃣, 2️⃣ ou 💬!"
   },
-  events_log: {
-    titulo: "Caixa Preta de Auditoria (data/events.log)",
-    termo: "LOG DE EVENTOS EM TEMPO REAL",
-    texto: "É o histórico detalhado de tudo o que aconteceu no sistema: cada mensagem disparada, qual chip enviou e cada resposta recebida dos clientes, com data e hora exatas.",
-    dica: "💡 Serve como comprovante de auditoria e ajuda a acompanhar o trabalho do robô ao vivo."
+  pool_5_chips: {
+    titulo: "Matriz de 50 Chips Simultâneos",
+    termo: "ESCALA HORIZONTAL DE PROSPECÇÃO",
+    texto: "Gerencie até 50 aparelhos simultâneos (<code>chip_1</code> a <code>chip_50</code>). Você pode filtrar rapidamente pelos 10 primeiros, pelos conectados ou pelos que estão em resfriamento.",
+    dica: "💡 Clique no botão ⚙️ em qualquer card de chip para ajustar o consultor, limite diário ou colocar em pausa preventiva."
   },
-  modo_gravacao: {
-    titulo: "Modo Gravação / Privacidade LGPD",
-    termo: "MASCARAMENTO DE TELEFONES NA TELA",
-    texto: "Quando ativado (<b>ON ✔</b>), esconde o meio de todos os números de telefone na tela (ex: <code>+5527•••••177</code>).<br><br>Isso permite que você tire prints da tela, compartilhe em reuniões ou grave vídeos sem expor dados pessoais dos seus clientes (conformidade com a LGPD).",
-    dica: "💡 Ele oculta apenas visualmente na tela; os disparos continuam funcionando normalmente."
-  },
-  tabela_leads: {
-    titulo: "Gerenciamento da Planilha de Leads (4.523 Registros)",
-    termo: "SALVAMENTO ATÔMICO CRASH-SAFE (.tmp)",
-    texto: "Esta tabela mostra diretamente o seu arquivo <code>data/leads.csv</code>.<br>• Toda alteração é salva usando um arquivo temporário de segurança (<code>leads.csv.tmp</code>), garantindo que sua planilha <b>nunca corrompa</b> mesmo se o computador desligar no meio de um disparo.<br>• Quem já está como <code>enviado</code>, <code>interessado</code>, <code>respondeu</code> ou <code>opt_out</code> é pulado automaticamente nos próximos disparos para nunca receber mensagem repetida.",
-    dica: "💡 Clique no botão verde '📲 WhatsApp' em qualquer linha para abrir a conversa direta com aquele cliente no seu WhatsApp Web!"
-  },
-  kpi_total: {
-    titulo: "Indicador: Total na Base CSV",
-    termo: "TOTAL DE CONTATOS CADASTRADOS",
-    texto: "Mostra a soma total de contatos presentes no arquivo <code>data/leads.csv</code>. Clique neste cartão para mostrar todos os leads na tabela abaixo.",
-    dica: "💡 Você pode adicionar mais contatos a qualquer momento no botão '➕ Importar Leads' no topo."
-  },
-  kpi_novo: {
-    titulo: "Indicador: Na Fila (Novos)",
-    termo: "STATUS: NOVO (AGUARDANDO 1º DISPARO)",
-    texto: "São os contatos que ainda <b>não receberam nenhuma mensagem</b> sua. Quando você clica em 'Disparar Lote', o sistema pega apenas os contatos desta fila.",
-    dica: "💡 Clique neste cartão para filtrar na tabela apenas quem ainda está na fila."
-  },
-  kpi_enviado: {
-    titulo: "Indicador: Mensagens Enviadas",
-    termo: "STATUS: ENVIADO (PROTEGIDO CONTRA REENVIO)",
-    texto: "Contatos que já receberam a mensagem inicial e estamos aguardando responderem. Eles ficam protegidos para que o sistema não mande a mesma mensagem duas vezes para a mesma pessoa.",
-    dica: "💡 Clique neste cartão para ver todos os leads que já foram abordados e por qual dos 5 chips."
-  },
-  kpi_interessado: {
-    titulo: "Indicador: 🔥 Interessados (Opção 1)",
-    termo: "STATUS: INTERESSADO (LEAD QUENTE)",
-    texto: "São o ouro da sua campanha: empresas que responderam <b>1</b> pedindo orçamento! O consultor já recebe um alerta no celular, e você pode clicar neste cartão para ver só os interessados.",
-    dica: "💡 Clique no botão '📲 WhatsApp' ao lado do lead interessado para já iniciar o atendimento comercial."
-  },
-  kpi_respondeu: {
-    titulo: "Indicador: 💬 Respostas Livres",
-    termo: "STATUS: RESPONDEU (DÚVIDA OU PERGUNTA)",
-    texto: "Clientes que, em vez de digitar apenas 1 ou 2, escreveram uma frase (ex: <i>'Qual o valor para 5 vidas?'</i> ou <i>'Já tenho plano, vocês fazem portabilidade?'</i>).",
-    dica: "💡 A pergunta exata que o cliente escreveu aparece na coluna 'Última Interação & Resposta' da tabela."
-  },
-  kpi_optout: {
-    titulo: "Indicador: 🚫 Opt-Out (Opção 2)",
-    termo: "STATUS: OPT-OUT (LISTA DE BLOQUEIO / NÃO PERTURBE)",
-    texto: "<b>Opt-Out</b> significa <i>'Pedido de Descadastramento'</i>. São as pessoas que digitaram <b>2</b> (ou 'sair', 'não quero'). O sistema bloqueia esse número permanentemente para proteger seus chips contra denúncias no WhatsApp.",
-    dica: "💡 Respeitar o Opt-Out automático é o segredo nº 1 para manter seus 5 chips sem banimento."
-  },
-  disparador_geral: {
-    titulo: "Como Funciona o Disparador de Campanhas",
-    termo: "PASSO A PASSO PARA DISPARAR",
-    texto: "1. Escolha se quer fazer um teste sem enviar (<b>DRY-RUN</b>) ou <b>Envio Real</b>.<br>2. Escolha se quer usar todos os chips ativos revezando (<b>Pool Rotativo</b>) ou um chip específico.<br>3. Defina quantos leads quer abordar agora no <b>Limite do Lote</b> (ex: 20).<br>4. Clique em <b>🚀 Disparar Lote Evolution API</b>.",
-    dica: "💡 O sistema só envia para quem está com status 'novo', então você pode clicar em Disparar várias vezes ao longo do dia tranquilamente!"
-  },
-  evo_url: {
-    titulo: "O que é EVOLUTION_API_URL?",
-    termo: "ENDEREÇO DO MOTOR DO WHATSAPP",
-    texto: "É o endereço local onde o container Docker da Evolution API está rodando no seu computador (padrão: <code>http://localhost:8081</code>).",
-    dica: "💡 Não precisa alterar a menos que você instale a Evolution API em outro servidor na nuvem."
-  },
-  evo_key: {
-    titulo: "O que é EVOLUTION_API_KEY?",
-    termo: "CHAVE DE SEGURANÇA DA EVOLUTION API",
-    texto: "É a senha interna que autoriza este painel a criar instâncias, gerar QR Codes e enviar mensagens na Evolution API (padrão já configurado: <code>lead_manager_evo_key_2026</code>).",
-    dica: "💡 Já vem pré-configurada igual ao seu arquivo docker-compose.evolution.yml."
-  },
-  consultor_phone: {
-    titulo: "WhatsApp do Consultor (Repasse de Leads)",
-    termo: "NÚMERO QUE RECEBE OS ALERTAS DE VENDA",
-    texto: "Coloque aqui o seu número pessoal de WhatsApp (ou do vendedor responsável) com DDD, ex: <code>5527999999999</code>.<br><br>Sempre que um cliente responder <b>1 (Quero orçamento)</b> ou mandar uma dúvida, o robô te manda uma mensagem na hora com os dados do cliente e o link para abrir a conversa!",
-    dica: "💡 Você também pode colocar um consultor diferente para cada um dos 5 chips em '📲 Configurar 5 Chips'."
-  },
-  importacao_opcoes: {
-    titulo: "Higienização & Deduplicação Inteligente na Importação",
-    termo: "DEDUPLICAÇÃO PELO 9º DÍGITO + NORMALIZAÇÃO +55",
-    texto: "Sempre que você importa novos leads (por qualquer uma das 6 abas), o sistema automaticamente:<br>1. Limpa traços, espaços e parênteses e adiciona o código do Brasil (<code>55</code>).<br>2. Compara o DDD + 8 últimos dígitos com os seus leads atuais para <b>nunca duplicar</b> um cliente (mesmo que antes estivesse sem o 9º dígito).<br>3. Exibe um relatório de quantos foram adicionados e quantos já existiam.",
-    dica: "💡 Assim você pode subir planilhas inteiras sem medo de mandar mensagem repetida para quem já foi abordado!"
-  },
-  importacao_tag: {
-    titulo: "Etiqueta de Origem (Tag)",
-    termo: "IDENTIFICAÇÃO DA FONTE DO LEAD",
-    texto: "Se você preencher este campo (ex: <code>Google Maps</code> ou <code>Sindicato</code>), o sistema adiciona essa etiqueta na frente do nome do lead (ex: <code>[Google Maps] Padaria Vitória</code>).",
-    dica: "💡 Depois você pode digitar o nome da etiqueta na busca da tabela para filtrar todos os leads que vieram daquela fonte!"
-  },
-  importacao_fixo_celular: {
-    titulo: "Filtro: Celulares vs. Fixos Comerciais",
-    termo: "WHATSAPP BUSINESS EM TELEFONE FIXO",
-    texto: "Muitas empresas e clínicas usam o número de <b>telefone fixo (10 dígitos, ex: 27 3322-1100)</b> cadastrado no <b>WhatsApp Business</b>.<br><br>• Na opção <b>Celulares + Fixos Comerciais</b>, o sistema aceita ambos.<br>• Na opção <b>Apenas Celulares</b>, ele descarta números fixos.",
-    dica: "💡 Para prospecção de empresas (CNPJ), vale a pena manter 'Celulares + Fixos Comerciais'!"
-  },
-  imp_arquivos: {
-    titulo: "1. Upload de Arquivos (.XLSX, .CSV, .VCF, .JSON, .TXT)",
-    termo: "LEITURA AUTOMÁTICA DE PLANILHAS E CONTATOS",
-    texto: "Aceita diretamente:<br>• <b>.XLSX</b>: Planilhas nativas do Microsoft Excel.<br>• <b>.CSV / .TSV / .TXT</b>: Planilhas separadas por vírgula, ponto-e-vírgula ou tabulação.<br>• <b>.VCF (vCard)</b>: Arquivo de agenda exportado do celular (Android / iPhone / Google Contacts).<br>• <b>.JSON</b>: Listas exportadas de outros sistemas.",
-    dica: "💡 Você pode selecionar vários arquivos de uma vez só segurando a tecla Ctrl!"
-  },
-  imp_colar: {
-    titulo: "2. Copiar e Colar Direto do Excel",
-    termo: "COPY & PASTE DE CÉLULAS",
-    texto: "Abra sua planilha no Excel ou Google Planilhas, selecione as colunas de Nome e Telefone com o mouse, aperte <b>Ctrl+C</b> e dê <b>Ctrl+V</b> na caixa de texto.<br><br>O sistema entende automaticamente a separação por colunas do Excel.",
-    dica: "💡 É o jeito mais rápido quando você quer importar só uma parte de uma planilha aberta."
-  },
-  imp_extrator: {
-    titulo: "3. Caçador Inteligente de Telefones (Texto Bruto)",
-    termo: "EXTRATOR REGEX DE TEXTO BAGUNÇADO",
-    texto: "Sabe quando você pesquisa empresas no <b>Google Maps</b>, abre um PDF, um site ou e-mail e o texto vem todo misturado com endereço, horário de funcionamento e comentários?<br><br>Basta copiar tudo como está e colar aqui: o Caçador encontra todos os telefones brasileiros com DDD e associa ao nome da empresa!",
-    dica: "💡 Excelente para garimpar leads novos todos os dias direto do Google ou catálogos online."
-  },
-  imp_cnpj: {
-    titulo: "4. Busca Automática por Lista de CNPJs",
-    termo: "ENRIQUECIMENTO NA RECEITA FEDERAL (BRASILAPI)",
-    texto: "Se você tem apenas números de CNPJ de empresas, cole a lista aqui.<br><br>O sistema consulta na hora a base pública da Receita Federal (via BrasilAPI), descobre a <b>Razão Social / Nome Fantasia</b> e os <b>Telefones registrados no CNPJ</b>, e já cadastra tudo na sua fila!",
-    dica: "💡 Ideal para prospecção de planos empresariais B2B focada em CNPJs ativos."
-  },
-  imp_url: {
-    titulo: "5. Importar por Link do Google Sheets ou URL",
-    termo: "SINCRONIZAÇÃO COM PLANILHA NA NUVEM",
-    texto: "Se sua equipe mantém uma planilha no <b>Google Sheets</b>, basta clicar em <i>Compartilhar &gt; Qualquer pessoa com o link pode ver</i>, copiar o link do navegador e colar aqui.<br><br>O sistema converte o link automaticamente, baixa os contatos e adiciona apenas os novos!",
-    dica: "💡 Você pode colar o link normal de edição do Google Sheets que nós fazemos a conversão para CSV sozinhos."
-  },
-  imp_evolution: {
-    titulo: "6. Puxar Contatos da Agenda do Chip (Evolution API)",
-    termo: "SINCRONIZAÇÃO DIRETA DO APARELHO WHATSAPP",
-    texto: "Consulta diretamente o chip conectado na Evolution API e importa todos os contatos individuais salvos na agenda do aparelho e conversas recentes (ignorando grupos de WhatsApp).",
-    dica: "💡 Ótimo para trazer para dentro da planilha contatos que já conversavam no celular do vendedor!"
-  }
+  kpi_total: {titulo:"Total na Base CSV",termo:"BASE COMPLETA",texto:"Total de leads cadastrados na sua planilha ativa.",dica:"💡 Clique para ver todos os contatos."},
+  kpi_novo: {titulo:"Na Fila (Novos)",termo:"PRONTOS PARA ABORDAGEM",texto:"Leads que ainda não receberam mensagem.",dica:"💡 O disparador aborda apenas contatos com status 'novo'."},
+  kpi_enviado: {titulo:"Já Abordados (Enviados)",termo:"PROTEGIDOS CONTRA REPETIÇÃO",texto:"Leads que já receberam mensagem ou já possuíam conversa no aparelho.",dica:"💡 Travados no cofre permanente anti-reenvio."},
+  kpi_interessado: {titulo:"Interessados (Opção 1)",termo:"LEADS QUENTES 🔥",texto:"Clientes que responderam 1 pedindo orçamento.",dica:"💡 Clique em '↗️ Encaminhar' ou '📲 WhatsApp' para atender!"},
+  kpi_respondeu: {titulo:"Dúvidas Livres",termo:"AGUARDANDO ATENDIMENTO HUMANO",texto:"Clientes que enviaram uma pergunta específica.",dica:"💡 Veja o texto exato da pergunta na tabela."},
+  kpi_optout: {titulo:"Opt-Out (Opção 2)",termo:"BLOQUEIO PERMANENTE",texto:"Contatos que pediram para não receber novas mensagens.",dica:"💡 Respeitar o Opt-Out protege a saúde dos 50 chips."}
 };
 
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 
+function formatarSegundos(seg){
+  const s=Math.max(0,parseInt(seg||0,10));
+  const h=Math.floor(s/3600);
+  const m=Math.floor((s%3600)/60);
+  const r=s%60;
+  if(h>0)return `${h}h ${String(m).padStart(2,'0')}m ${String(r).padStart(2,'0')}s`;
+  return `${String(m).padStart(2,'0')}m ${String(r).padStart(2,'0')}s`;
+}
+
+function tocarSomNotificacao(tipo){
+  if(!somAtivo)return;
+  try{
+    const ctx=new (window.AudioContext||window.webkitAudioContext)();
+    const osc=ctx.createOscillator();
+    const gain=ctx.createGain();
+    osc.connect(gain);gain.connect(ctx.destination);
+    osc.frequency.value=(tipo==='danger'?320:(tipo==='hot'?880:580));
+    gain.gain.setValueAtTime(0.08,ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.35);
+    osc.start();osc.stop(ctx.currentTime+0.35);
+  }catch(e){}
+}
+
+function dispararToast(titulo, mensagem, nivel='ok'){
+  const item={id:Date.now(),horario:new Date().toLocaleTimeString('pt-BR'),titulo,mensagem,nivel};
+  notificacoes.unshift(item);
+  if(notificacoes.length>50)notificacoes.pop();
+  atualizarBadgeNotif();
+
+  const stack=document.getElementById('toastStack');
+  const el=document.createElement('div');
+  el.className=`toast ${nivel}`;
+  el.innerHTML=`
+    <div>
+      <strong style="font-family:var(--f-head);font-size:13.5px;text-transform:uppercase">${esc(titulo)}</strong>
+      <div style="font-size:12px;margin-top:2px;color:var(--muted)">${esc(mensagem)}</div>
+    </div>
+    <button class="btn sm" type="button" onclick="this.parentElement.remove()">✕</button>
+  `;
+  stack.appendChild(el);
+  tocarSomNotificacao(nivel==='danger'?'danger':(titulo.includes('Interessado')?'hot':'ok'));
+  setTimeout(()=>{if(el.parentElement)el.remove()},7000);
+}
+
+function atualizarBadgeNotif(){
+  document.getElementById('lblNotifCount').textContent=notificacoes.length;
+  const box=document.getElementById('listaNotificacoesModal');
+  if(!box)return;
+  if(!notificacoes.length){
+    box.innerHTML='<div style="color:var(--muted);font-family:var(--f-mono)">Nenhuma notificação recente.</div>';
+    return;
+  }
+  box.innerHTML=notificacoes.map(n=>`
+    <div class="slot-box" style="border-left:5px solid ${n.nivel==='danger'?'var(--danger)':(n.nivel==='warn'?'var(--warn)':'var(--ok)')}">
+      <div style="display:flex;justify-content:space-between;font-family:var(--f-mono);font-size:11px;color:var(--muted)">
+        <span>${esc(n.titulo)}</span><span>${esc(n.horario)}</span>
+      </div>
+      <div style="font-size:12.5px">${esc(n.mensagem)}</div>
+    </div>
+  `).join('');
+}
+
+function mudarVisao(v){
+  visaoAtual=v;
+  ['operacao','chips','encaminhamento','restricoes','leads','segunda_tela'].forEach(k=>{
+    const sec=document.getElementById('view_'+k);
+    const nav=document.getElementById('nav_'+k);
+    if(sec)sec.classList.toggle('active',k===v);
+    if(nav)nav.classList.toggle('active',k===v);
+  });
+  if(v==='segunda_tela')document.body.classList.add('noc-mode');
+  atualizarTextoBotaoNoc();
+}
+
+function irParaLeadsFiltrado(st){
+  document.getElementById('fStatus').value=st;
+  paginaAtual=1;
+  mudarVisao('leads');
+  carregarDashboard();
+}
+
+function alternarModoNocLocal(){
+  document.body.classList.toggle('noc-mode');
+  atualizarTextoBotaoNoc();
+}
+
+function atualizarTextoBotaoNoc(){
+  const ativo=document.body.classList.contains('noc-mode');
+  document.getElementById('btnToggleNoc').textContent=`🌙 Tema NOC Escuro: ${ativo?'ON ✔':'OFF'}`;
+}
+
+function abrirSegundaTelaMonitor(){
+  window.open('/?tv=1','Monitor_NOC_Segunda_Tela','width=1420,height=900,menubar=no,toolbar=no,location=no,status=no');
+}
+
 function explicar(chave){
-  const item = EXPLICACOES[chave];
-  if(!item) return;
-  document.getElementById('ajudaTitulo').textContent = '💡 ' + item.titulo;
-  document.getElementById('ajudaTermo').textContent = item.termo;
-  document.getElementById('ajudaTexto').innerHTML = item.texto;
-  document.getElementById('ajudaDica').innerHTML = item.dica;
+  const item=EXPLICACOES[chave]||EXPLICACOES.pool_5_chips;
+  document.getElementById('ajudaTitulo').textContent='💡 '+item.titulo;
+  document.getElementById('ajudaTermo').textContent=item.termo;
+  document.getElementById('ajudaTexto').innerHTML=item.texto;
+  document.getElementById('ajudaDica').innerHTML=item.dica;
   document.getElementById('modalAjuda').classList.add('open');
 }
 
 function renderDicionarioCompleto(){
-  const grid = document.getElementById('gridDicionario');
-  grid.innerHTML = Object.entries(EXPLICACOES).map(([k, v]) => `
+  const grid=document.getElementById('gridDicionario');
+  grid.innerHTML=Object.values(EXPLICACOES).map(v=>`
     <div class="glossary-item">
-      <h4>
-        <span>${esc(v.titulo)}</span>
-      </h4>
+      <h4>${esc(v.titulo)}</h4>
       <span class="help-tag">${esc(v.termo)}</span>
       <p>${v.texto}</p>
       <div style="font-size:11.5px;color:var(--ok);margin-top:4px;font-weight:600">${v.dica}</div>
@@ -1052,33 +1245,19 @@ function formatarTelefoneExibicao(tel){
 
 function alternarPrivacidade(){
   ocultarTelefones=!ocultarTelefones;
-  const btn=document.getElementById('btnDlp');
-  btn.textContent=`🔒 Modo Gravação: ${ocultarTelefones?'ON ✔':'OFF'}`;
+  document.getElementById('btnDlp').textContent=`🔒 Modo Gravação: ${ocultarTelefones?'ON ✔':'OFF'}`;
   carregarDashboard();
 }
 
 function abrirModal(id){
-  if(id==='modalContas')renderFormularioCincoContas();
   if(id==='modalDicionario')renderDicionarioCompleto();
+  if(id==='modalNotificacoes')atualizarBadgeNotif();
   document.getElementById(id).classList.add('open');
 }
-let timerQrRefresh=null;
 
 function fecharModal(id){
   if(id==='modalQrCode'&&timerQrRefresh){clearTimeout(timerQrRefresh);timerQrRefresh=null;}
   document.getElementById(id).classList.remove('open');
-}
-
-function filtrarPorCard(st){
-  document.getElementById('fStatus').value=st;
-  paginaAtual=1;
-  carregarDashboard();
-}
-
-function filtrarPorConta(cid){
-  document.getElementById('fAccount').value=cid;
-  paginaAtual=1;
-  carregarDashboard();
 }
 
 function debounceBusca(){
@@ -1093,6 +1272,28 @@ function mudarPagina(delta){
   carregarDashboard();
 }
 
+function badgeConexaoHtml(state){
+  const s=String(state||'close').toLowerCase();
+  if(s==='open')return '<span style="color:var(--ok);font-weight:700">🟢 CONECTADO</span>';
+  if(s==='connecting')return '<span style="color:var(--warn);font-weight:700">🟡 PAREANDO QR</span>';
+  return '<span style="color:var(--muted)">⚪ DESCONECTADO</span>';
+}
+
+function popularSelects50Chips(contas){
+  const ids=['campAccountMode','simAccount','fAccount','impGlobalConta','impEvoChip'];
+  ids.forEach(selId=>{
+    const el=document.getElementById(selId);
+    if(!el||el.dataset.populated==='1')return;
+    contas.forEach(c=>{
+      const opt=document.createElement('option');
+      opt.value=c.id;
+      opt.textContent=`📲 Chip #${c.slot} (${c.instance_name})`;
+      el.appendChild(opt);
+    });
+    el.dataset.populated='1';
+  });
+}
+
 async function carregarDashboard(){
   const status=document.getElementById('fStatus').value;
   const account=document.getElementById('fAccount').value;
@@ -1101,6 +1302,8 @@ async function carregarDashboard(){
   try{
     const r=await fetch(url);
     const d=await r.json();
+    if(!d.ok)return;
+
     const st=d.stats||{};
     document.getElementById('kTotal').textContent=(st.total||0).toLocaleString('pt-BR');
     document.getElementById('kNovo').textContent=(st.novo||0).toLocaleString('pt-BR');
@@ -1108,15 +1311,41 @@ async function carregarDashboard(){
     document.getElementById('kInteressado').textContent=(st.interessado||0).toLocaleString('pt-BR');
     document.getElementById('kRespondeu').textContent=(st.respondeu||0).toLocaleString('pt-BR');
     document.getElementById('kOptOut').textContent=(st.opt_out||0).toLocaleString('pt-BR');
+    document.getElementById('navCountLeads').textContent=(st.total||0).toLocaleString('pt-BR');
 
+    if(d.admin_account)adminAccountCache=d.admin_account;
     if(d.accounts&&d.accounts.length){
       contasCache=d.accounts;
-      renderCardsContas(contasCache);
+      popularSelects50Chips(contasCache);
     }
+    restrictionsCache=d.restrictions||[];
+    routingCache=d.routing||{};
+    eventsCache=d.events||[];
+    leadsCache=d.leads||[];
+
+    // Detecta novo evento para disparar notificação toast em tempo real
+    if(eventsCache.length){
+      const topo=eventsCache[0];
+      if(ultimoEventoTimestamp&&topo.timestamp!==ultimoEventoTimestamp){
+        if(topo.type==='message_received'&&topo.payload){
+          const ns=topo.payload.new_status;
+          if(ns==='interessado')dispararToast('🔥 Novo Lead Interessado (Opção 1)!',`${topo.payload.profile_name||topo.phone} pediu orçamento via ${topo.payload.instance_name}`,'ok');
+          else if(ns==='respondeu')dispararToast('💬 Nova Dúvida de Lead',`${topo.payload.profile_name||topo.phone}: "${topo.payload.text}"`,'warn');
+        }
+      }
+      ultimoEventoTimestamp=topo.timestamp;
+    }
+
+    renderContaAdmin();
+    renderCardsContas();
+    renderBannerRestricoes();
+    renderRelatorioRestricoes();
+    renderFormularioRouting();
+    renderNocSegundaTela();
 
     const cfg=d.config||{};
     const bJanela=document.getElementById('badgeJanelaComercial');
-    bJanela.textContent=cfg.business_hours_now?'🟢 Janela Comercial Ativa':'🟡 Fora do Horário Comercial (Use --force-hours p/ testar)';
+    bJanela.textContent=cfg.business_hours_now?'🟢 Janela Comercial Ativa':'🟡 Fora do Horário Comercial (Use --force-hours)';
     bJanela.style.borderColor=cfg.business_hours_now?'var(--ok)':'var(--warn)';
     bJanela.style.color=cfg.business_hours_now?'var(--ok)':'var(--warn)';
 
@@ -1127,8 +1356,8 @@ async function carregarDashboard(){
     document.getElementById('cfgEvoKey').value=cfg.evolution_api_key||'lead_manager_evo_key_2026';
     document.getElementById('cfgConsultantPhone').value=cfg.consultant_phone||'';
     document.getElementById('cfgDailyLimit').value=cfg.daily_limit||60;
-    document.getElementById('cfgMinDelay').value=cfg.min_delay||6;
-    document.getElementById('cfgMaxDelay').value=cfg.max_delay||15;
+    document.getElementById('cfgMinDelay').value=cfg.min_delay||15;
+    document.getElementById('cfgMaxDelay').value=cfg.max_delay||35;
 
     totalPaginas=Math.max(1,d.total_pages||1);
     document.getElementById('lblTotalFiltrado').textContent=(d.filtered_total||0).toLocaleString('pt-BR');
@@ -1136,58 +1365,375 @@ async function carregarDashboard(){
     document.getElementById('btnPrev').disabled=(paginaAtual<=1);
     document.getElementById('btnNext').disabled=(paginaAtual>=totalPaginas);
 
-    renderLeads(d.leads||[]);
-    renderEvents(d.events||[]);
+    renderLeads(leadsCache);
+    renderEvents(eventsCache);
   }catch(e){}
 }
 
-function badgeConexaoHtml(state){
-  const s=String(state||'close').toLowerCase();
-  if(s==='open')return '<span style="color:var(--ok);font-weight:700">🟢 CONECTADO</span>';
-  if(s==='connecting')return '<span style="color:var(--warn);font-weight:700">🟡 PAREANDO QR</span>';
-  if(s==='evolution_offline')return '<span style="color:var(--muted)">⚪ DOCKER OFFLINE</span>';
-  return '<span style="color:var(--warn)">⚪ DESCONECTADO</span>';
+function renderContaAdmin(){
+  const a=adminAccountCache||{};
+  const resumo=document.getElementById('barContaAdminResumo');
+  const detalhe=document.getElementById('cardContaAdminDetalhe');
+  const htmlContent=`
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:24px">👑</span>
+      <div>
+        <strong style="font-family:var(--f-head);font-size:15px;text-transform:uppercase">${esc(a.nome||'Conta Principal Administradora')}</strong>
+        <div style="font-family:var(--f-mono);font-size:11.5px;color:var(--muted)">
+          Instância: <code>${esc(a.instance_name||'chip_admin')}</code> · Status: ${badgeConexaoHtml(a.connection_status)} ·
+          Consultor Destino: <b>${a.consultant_phone?'+'+esc(formatarTelefoneExibicao(a.consultant_phone)):'Configurar'}</b>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <span class="admin-badge">🛡️ NUNCA PROSPECTA (APENAS ENCAMINHA LEADS & ALERTAS)</span>
+      <button class="btn sm" type="button" onclick="abrirModalEditarChip('conta_admin')">⚙️ Configurar Admin</button>
+      <button class="btn sm brand" type="button" onclick="abrirQrCodeInstancia('conta_admin','${esc(a.instance_name||'chip_admin')}')">📱 QR Code Admin</button>
+    </div>
+  `;
+  if(resumo)resumo.innerHTML=htmlContent;
+  if(detalhe)detalhe.innerHTML=`<div class="admin-bar">${htmlContent}</div>`;
 }
 
-function renderCardsContas(contas){
-  const grid=document.getElementById('gridContas');
-  const ativas=contas.filter(c=>c.ativo).length;
-  const capTotal=contas.filter(c=>c.ativo).reduce((acc,c)=>acc+(c.daily_limit||0),0);
-  const envHojeTotal=contas.reduce((acc,c)=>acc+(c.enviados_hoje||0),0);
-  document.getElementById('badgePoolResumo').textContent=`${ativas}/5 Chips Ativos no Pool · Disparo Hoje: ${envHojeTotal}/${capTotal} msgs`;
+function renderBannerRestricoes(){
+  const restritos=contasCache.filter(c=>(c.cooldown_seconds||0)>0);
+  document.getElementById('navCountRestr').textContent=restritos.length;
+  const bHealth=document.getElementById('badgeGlobalHealth');
+  if(restritos.length>0){
+    bHealth.textContent=`🚨 ${restritos.length} Chip(s) em Cooldown`;
+    bHealth.style.borderColor='var(--danger)';
+    bHealth.style.color='var(--danger)';
+  }else{
+    bHealth.textContent='🟢 Sistema Operacional';
+    bHealth.style.borderColor='var(--ok)';
+    bHealth.style.color='var(--ok)';
+  }
 
-  grid.innerHTML=contas.map(c=>{
+  const banner=document.getElementById('bannerRestricoesAtivas');
+  const box=document.getElementById('listaRestricoesBanner');
+  if(!restritos.length){
+    banner.classList.remove('show');
+    return;
+  }
+  banner.classList.add('show');
+  box.innerHTML=restritos.map(c=>`
+    <div class="rb-item">
+      <div>
+        <strong style="color:var(--danger)">📲 Chip #${c.slot} (${esc(c.instance_name)}) — ${esc(c.motivo_restricao||'Em Quarentena Preventiva')}</strong>
+        <div style="font-size:12px;color:var(--ink);margin-top:2px">💡 <b>Sugestão:</b> ${esc(c.sugestao_restricao||'Aguarde o timer zerar antes de retomar os envios.')}</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span class="timer-pill" data-cooldown-cid="${esc(c.id)}">⏳ ${formatarSegundos(c.cooldown_seconds)}</span>
+        <button class="btn sm ok" type="button" onclick="liberarQuarentenaChip('${esc(c.id)}')">🔓 Liberar Agora</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderCardsContas(){
+  const grid=document.getElementById('gridContas');
+  const filtro=document.getElementById('fFiltroChips').value;
+  const ativas=contasCache.filter(c=>c.ativo&&(c.cooldown_seconds||0)===0).length;
+  const conectadas=contasCache.filter(c=>String(c.connection_status).toLowerCase()==='open').length;
+  const capTotal=contasCache.filter(c=>c.ativo).reduce((acc,c)=>acc+(c.daily_limit||0),0);
+  const envHojeTotal=contasCache.reduce((acc,c)=>acc+(c.enviados_hoje||0),0);
+
+  document.getElementById('badgePoolResumo').textContent=`${ativas} Ativos Livres · ${conectadas}/50 Conectados · Hoje: ${envHojeTotal}/${capTotal} msgs`;
+  document.getElementById('navCountChips').textContent=`${conectadas}/50`;
+
+  let lista=contasCache;
+  if(filtro==='top10')lista=contasCache.slice(0,10);
+  else if(filtro==='ativos')lista=contasCache.filter(c=>c.ativo);
+  else if(filtro==='conectados')lista=contasCache.filter(c=>String(c.connection_status).toLowerCase()==='open');
+  else if(filtro==='restritos')lista=contasCache.filter(c=>(c.cooldown_seconds||0)>0||c.erros_hoje>0);
+
+  if(!lista.length){
+    grid.innerHTML='<div style="padding:14px;font-family:var(--f-mono);color:var(--muted)">Nenhum chip corresponde ao filtro selecionado. Mude para "Mostrar Todos os 50 Chips".</div>';
+    return;
+  }
+
+  grid.innerHTML=lista.map(c=>{
     const pct=Math.min(100,Math.round(((c.enviados_hoje||0)/Math.max(1,c.daily_limit||60))*100));
     const st=c.stats||{};
-    const telExib=c.telefone_exibicao?('+'+formatarTelefoneExibicao(c.telefone_exibicao)):'Via QR Code';
+    const emRestricao=(c.cooldown_seconds||0)>0;
+    const cls=emRestricao?'restricted':(c.ativo?'active':'inactive');
     return `
-      <div class="acc-card ${c.ativo?'active':'inactive'}">
+      <div class="acc-card ${cls}">
         <div class="acc-head">
-          <span class="acc-title" style="cursor:pointer" onclick="filtrarPorConta('${esc(c.id)}')" title="Clique para filtrar leads deste chip">#${c.slot} · ${esc(c.nome)}</span>
-          <button class="btn sm ${c.ativo?'wa':''}" type="button" onclick="alternarContaAtiva('${esc(c.id)}')" title="Incluir ou pausar este chip no revezamento Round-Robin">
+          <span class="acc-title" style="cursor:pointer" onclick="abrirModalEditarChip('${esc(c.id)}')">#${c.slot} · ${esc(c.nome)}</span>
+          <button class="btn sm ${c.ativo?'wa':''}" type="button" onclick="alternarContaAtiva('${esc(c.id)}')">
             ${c.ativo?'🟢 ATIVO':'⚪ PAUSADO'}
           </button>
         </div>
         <div class="acc-meta">
-          <div><b>Instância:</b> <code>${esc(c.instance_name||'chip_'+c.slot)}</code></div>
-          <div><b>Sessão:</b> ${badgeConexaoHtml(c.connection_status)}</div>
-          <div><b>Chip:</b> ${esc(telExib)}</div>
-          <div><b>Consultor:</b> ${c.consultant_phone?'+'+esc(formatarTelefoneExibicao(c.consultant_phone)):'Padrão .env'}</div>
+          <div><b>Instância:</b> <code>${esc(c.instance_name)}</code> · ${badgeConexaoHtml(c.connection_status)}</div>
+          <div><b>Consultor:</b> ${c.consultant_phone?'+'+esc(formatarTelefoneExibicao(c.consultant_phone)):'Fila / Padrão'}</div>
         </div>
-        <div style="margin-top:2px">
+        ${emRestricao?`
+          <div style="background:var(--danger);color:#fff;padding:5px 8px;border-radius:4px;font-family:var(--f-mono);font-size:11px;display:flex;justify-content:space-between;align-items:center">
+            <span>⏳ Cooldown: <b data-cooldown-cid="${esc(c.id)}">${formatarSegundos(c.cooldown_seconds)}</b></span>
+            <button class="btn sm" style="padding:1px 5px;font-size:10px" type="button" onclick="liberarQuarentenaChip('${esc(c.id)}')">Liberar</button>
+          </div>
+        `:''}
+        <div>
           <div style="display:flex;justify-content:space-between;font-family:var(--f-mono);font-size:11px">
-            <span>Cota Anti-Ban:</span>
-            <b>${c.enviados_hoje||0} / ${c.daily_limit||60}</b>
+            <span>Cota: <b>${c.enviados_hoje||0}/${c.daily_limit||60}</b></span>
+            <span>Erros: <b style="color:${c.erros_hoje>0?'var(--danger)':'inherit'}">${c.erros_hoje||0}</b></span>
           </div>
           <div class="quota-bar"><div class="quota-fill" style="width:${pct}%"></div></div>
         </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px dashed var(--line);padding-top:6px;margin-top:2px">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px dashed var(--line);padding-top:6px">
           <span style="font-family:var(--f-mono);font-size:11px">📤 <b>${st.enviados||0}</b> · 🔥 <b style="color:var(--ok)">${st.interessados||0}</b></span>
-          <button class="btn sm brand" type="button" onclick="abrirQrCodeInstancia('${esc(c.id)}','${esc(c.instance_name)}')">📱 QR Code</button>
+          <div style="display:flex;gap:4px">
+            <button class="btn sm" type="button" onclick="abrirModalEditarChip('${esc(c.id)}')" title="Configurar Chip">⚙️</button>
+            <button class="btn sm brand" type="button" onclick="abrirQrCodeInstancia('${esc(c.id)}','${esc(c.instance_name)}')">📱 QR Code</button>
+          </div>
         </div>
       </div>
     `;
   }).join('');
+}
+
+function renderRelatorioRestricoes(){
+  const sugGrid=document.getElementById('gridSugestoesSaude');
+  const conectadas=contasCache.filter(c=>String(c.connection_status).toLowerCase()==='open').length;
+  const ativas=contasCache.filter(c=>c.ativo).length;
+  const restritas=contasCache.filter(c=>(c.cooldown_seconds||0)>0);
+
+  sugGrid.innerHTML=`
+    <div class="glossary-item" style="border-left:5px solid var(--wa)">
+      <h4>📊 Diagnóstico de Distribuição do Pool (50 Chips)</h4>
+      <p>Você possui <b>${conectadas} chip(s) conectado(s)</b> e <b>${ativas} marcado(s) como Ativo(s)</b>. ${conectadas<3?'Recomendamos conectar ao menos 3 a 5 chips para diluir os disparos em Round-Robin e reduzir em 80% a chance de bloqueio.':'Boa distribuição! O Round-Robin está dividindo a carga entre múltiplos aparelhos.'}</p>
+    </div>
+    <div class="glossary-item" style="border-left:5px solid var(--gold)">
+      <h4>👑 Blindagem da Conta Principal Administradora</h4>
+      <p>Status da Conta Admin (<code>${esc(adminAccountCache.instance_name||'chip_admin')}</code>): ${badgeConexaoHtml(adminAccountCache.connection_status)}. Conecte o QR Code da Conta Admin para que todos os alertas de vendas saiam por ela sem gastar cota dos chips de prospecção.</p>
+    </div>
+  `;
+
+  const boxRestr=document.getElementById('boxChipsRestritosDetalhe');
+  if(!restritas.length){
+    boxRestr.innerHTML='<div class="slot-box" style="color:var(--ok)">✅ Nenhum dos 50 chips está em restrição ou quarentena no momento!</div>';
+  }else{
+    boxRestr.innerHTML=restritas.map(c=>`
+      <div class="rb-item">
+        <div>
+          <strong style="font-size:14px;color:var(--danger)">📲 Chip #${c.slot} (${esc(c.instance_name)}) · Risco: ${esc(c.nivel_risco)}</strong>
+          <div style="font-size:12.5px;margin-top:3px"><b>Motivo:</b> ${esc(c.motivo_restricao)}</div>
+          <div style="font-size:12.5px;color:var(--ok);margin-top:2px">💡 <b>Recomendação:</b> ${esc(c.sugestao_restricao)}</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="timer-pill" data-cooldown-cid="${esc(c.id)}">⏳ ${formatarSegundos(c.cooldown_seconds)}</span>
+          <button class="btn sm ok" type="button" onclick="liberarQuarentenaChip('${esc(c.id)}')">🔓 Liberar Chip</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  const tb=document.getElementById('tbodyRestrictionsLog');
+  if(!restrictionsCache.length){
+    tb.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--muted)">Nenhum erro ou restrição registrado em data/restrictions_errors.log.</td></tr>';
+    return;
+  }
+  tb.innerHTML=restrictionsCache.map(r=>`
+    <tr>
+      <td style="font-family:var(--f-mono);font-size:11px">${esc((r.timestamp||'').slice(0,19))}</td>
+      <td><b>#${esc(r.slot)} (${esc(r.instance_name)})</b></td>
+      <td><span class="st ${r.risk_level==='CRÍTICO'||r.risk_level==='ALTO'?'st-opt_out':'st-novo'}">${esc(r.risk_level)}</span></td>
+      <td>
+        <b>${esc(r.title)}</b>
+        <div style="font-family:var(--f-mono);font-size:10.5px;color:var(--muted)">${esc(r.detail||'')}</div>
+      </td>
+      <td style="font-family:var(--f-mono)">⏳ ${esc(r.cooldown_minutes)} min</td>
+      <td style="font-size:12px">${esc(r.suggestion)}</td>
+      <td><button class="btn sm ok" type="button" onclick="liberarQuarentenaChip('${esc(r.account_id)}')">🔓 Liberar</button></td>
+    </tr>
+  `).join('');
+}
+
+function renderNocSegundaTela(){
+  const mat=document.getElementById('nocMatrix50');
+  if(!mat)return;
+  const todos=[adminAccountCache,...contasCache];
+  mat.innerHTML=todos.map(c=>{
+    const isAdm=c.admin_only||c.id==='conta_admin';
+    const isOpen=String(c.connection_status).toLowerCase()==='open';
+    const emRestr=(c.cooldown_seconds||0)>0;
+    const cls=emRestr?'st-restricted':(isOpen?'st-open':(c.ativo?'st-active-idle':''));
+    return `
+      <div class="noc-tile ${cls}" onclick="abrirQrCodeInstancia('${esc(c.id)}','${esc(c.instance_name)}')">
+        <div style="display:flex;justify-content:space-between;align-items:center;font-family:var(--f-head);font-weight:700;font-size:13px">
+          <span>${isAdm?'👑 ADMIN':'#'+c.slot+' '+esc(c.instance_name)}</span>
+          <span>${emRestr?'🚨':(isOpen?'🟢':(c.ativo?'🔵':'⚪'))}</span>
+        </div>
+        <div style="font-family:var(--f-mono);font-size:10.5px;color:var(--muted)">
+          ${emRestr?`<span style="color:#ef4444;font-weight:700" data-cooldown-cid="${esc(c.id)}">⏳ ${formatarSegundos(c.cooldown_seconds)}</span>`:`Env: ${c.enviados_hoje||0}/${c.daily_limit||60}`}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const hotFeed=document.getElementById('nocHotLeadsFeed');
+  const msgEvts=eventsCache.filter(e=>e.type==='message_received');
+  if(!msgEvts.length){
+    hotFeed.innerHTML='<div style="font-family:var(--f-mono);font-size:11.5px;color:var(--muted)">Aguardando novas respostas de leads...</div>';
+  }else{
+    hotFeed.innerHTML=msgEvts.slice(0,10).map(e=>{
+      const p=e.payload||{};
+      const waUrl=`https://wa.me/${String(e.phone||'').replace(/\D/g,'')}`;
+      return `
+        <div class="rb-item" style="border-color:var(--ok)">
+          <div>
+            <strong>${p.new_status==='interessado'?'🔥 INTERESSADO':'💬 RESPOSTA'}: ${esc(p.profile_name||e.phone)} (+${esc(formatarTelefoneExibicao(e.phone))})</strong>
+            <div style="font-size:12px;color:var(--muted)">Chip: <code>${esc(p.instance_name||'-')}</code> · Msg: "${esc(p.text||'')}"</div>
+          </div>
+          <div style="display:flex;gap:5px">
+            <button class="btn sm" type="button" onclick="abrirModalEncaminhar('${esc(e.phone)}','${esc(p.profile_name||'')}')">↗️ Repassar</button>
+            <a class="btn sm wa" href="${waUrl}" target="_blank">📲 Atender</a>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  const rFeed=document.getElementById('nocRestrictionsFeed');
+  if(!restrictionsCache.length){
+    rFeed.innerHTML='<div style="font-family:var(--f-mono);font-size:11.5px;color:var(--ok)">✅ Zero restrições registradas. Pool operando com segurança.</div>';
+  }else{
+    rFeed.innerHTML=restrictionsCache.slice(0,8).map(r=>`
+      <div class="rb-item">
+        <div>
+          <strong style="color:var(--danger)">[${esc(r.instance_name)}] ${esc(r.title)} (${esc(r.cooldown_minutes)}m cooldown)</strong>
+          <div style="font-size:11.5px;margin-top:2px">💡 ${esc(r.suggestion)}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+}
+
+function renderFormularioRouting(){
+  const r=routingCache||{};
+  if(document.activeElement&&['rtConsultorPadrao','rtWebhookCrm','rtFilaConsultores'].includes(document.activeElement.id))return;
+  document.getElementById('rtModo').value=r.modo_encaminhamento||'fixo_por_chip';
+  document.getElementById('rtUsarAdmin').value=String(r.usar_conta_admin_para_alertas!==false);
+  document.getElementById('rtConsultorPadrao').value=r.consultor_padrao||'';
+  document.getElementById('rtWebhookCrm').value=r.webhook_crm_url||'';
+  document.getElementById('rtSomAtivo').checked=r.som_notificacao_ativo!==false;
+  somAtivo=r.som_notificacao_ativo!==false;
+  const fila=r.fila_consultores||[];
+  document.getElementById('rtFilaConsultores').value=fila.map(c=>`${c.nome},${c.telefone}`).join('\n');
+}
+
+async function salvarConfigEncaminhamento(){
+  const linhas=document.getElementById('rtFilaConsultores').value.splitlines?document.getElementById('rtFilaConsultores').value.splitlines():document.getElementById('rtFilaConsultores').value.split('\n');
+  const fila=[];
+  linhas.forEach(ln=>{
+    ln=ln.trim();
+    if(!ln)return;
+    const pts=ln.split(/[;,]/);
+    if(pts.length>=2)fila.push({nome:pts[0].trim(),telefone:pts[1].trim(),ativo:true});
+    else fila.push({nome:'Consultor',telefone:pts[0].trim(),ativo:true});
+  });
+  const payload={
+    modo_encaminhamento:document.getElementById('rtModo').value,
+    usar_conta_admin_para_alertas:document.getElementById('rtUsarAdmin').value==='true',
+    consultor_padrao:document.getElementById('rtConsultorPadrao').value.trim(),
+    webhook_crm_url:document.getElementById('rtWebhookCrm').value.trim(),
+    som_notificacao_ativo:document.getElementById('rtSomAtivo').checked,
+    fila_consultores:fila
+  };
+  await fetch('/api/routing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  dispararToast('🔀 Encaminhamento Salvo','Regras de distribuição de leads atualizadas com sucesso!','ok');
+  await carregarDashboard();
+}
+
+function abrirModalEditarChip(cid){
+  const c=(cid==='conta_admin')?adminAccountCache:contasCache.find(x=>x.id===cid);
+  if(!c)return;
+  document.getElementById('editChipId').value=c.id;
+  document.getElementById('editChipTitle').textContent=`⚙️ Configurar ${c.id==='conta_admin'?'Conta Principal Admin':'Chip #'+c.slot}`;
+  document.getElementById('editChipNome').value=c.nome||'';
+  document.getElementById('editChipInstance').value=c.instance_name||'';
+  document.getElementById('editChipTel').value=c.telefone_exibicao||'';
+  document.getElementById('editChipConsultor').value=c.consultant_phone||'';
+  document.getElementById('editChipLimit').value=c.daily_limit||60;
+  abrirModal('modalEditarChip');
+}
+
+async function salvarEdicaoChipUnico(){
+  const cid=document.getElementById('editChipId').value;
+  const item={
+    id:cid,
+    nome:document.getElementById('editChipNome').value.trim(),
+    instance_name:document.getElementById('editChipInstance').value.trim(),
+    telefone_exibicao:document.getElementById('editChipTel').value.trim(),
+    consultant_phone:document.getElementById('editChipConsultor').value.trim(),
+    daily_limit:parseInt(document.getElementById('editChipLimit').value||'60',10)
+  };
+  await fetch('/api/accounts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accounts:[item]})});
+  fecharModal('modalEditarChip');
+  dispararToast('✅ Chip Atualizado',`Configurações de ${item.instance_name} salvas.`,'ok');
+  await carregarDashboard();
+}
+
+async function aplicarCooldownManual(minutos){
+  const cid=document.getElementById('editChipId').value;
+  await fetch('/api/restrictions',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'set_cooldown',id:cid,minutes:minutos})
+  });
+  fecharModal('modalEditarChip');
+  dispararToast('⏳ Timer de Cooldown Ativado',`Chip ${cid} colocado em pausa preventiva por ${minutos} min.`,'warn');
+  await carregarDashboard();
+}
+
+async function liberarQuarentenaChip(cid){
+  await fetch('/api/restrictions',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'clear',id:cid})
+  });
+  dispararToast('🔓 Chip Liberado',`${cid} removido da quarentena e pronto para uso.`,'ok');
+  await carregarDashboard();
+}
+
+async function simularRestricaoChip(cid){
+  await fetch('/api/restrictions',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'simulate_restriction',id:cid,code:'HTTP_428',detail:'Queda preventiva de socket (Teste de Restrição)'})
+  });
+  dispararToast('🚨 Alerta de Restrição Detectado!',`Chip ${cid} entrou em Cooldown automático de 30 min com sugestão de mitigação.`,'danger');
+  await carregarDashboard();
+}
+
+async function acaoLoteChips(action){
+  await fetch('/api/accounts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})});
+  await carregarDashboard();
+}
+
+function abrirModalEncaminhar(phone, name){
+  document.getElementById('fwLeadPhone').value=phone;
+  document.getElementById('fwLeadName').value=name||'Lead Comercial';
+  document.getElementById('fwLeadNotes').value='';
+  document.getElementById('fwFeedback').textContent='';
+  abrirModal('modalEncaminharLead');
+}
+
+async function confirmarEncaminhamentoLead(){
+  const phone=document.getElementById('fwLeadPhone').value;
+  const name=document.getElementById('fwLeadName').value;
+  const consultant_phone=document.getElementById('fwConsultantPhone').value.trim();
+  const notes=document.getElementById('fwLeadNotes').value.trim();
+  const r=await fetch('/api/leads/encaminhar',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({phone,name,consultant_phone,notes})
+  });
+  const d=await r.json();
+  if(d.ok){
+    document.getElementById('fwFeedback').innerHTML=d.sent_via_api
+      ?`✅ Enviado via API pela Conta Admin para ${esc(d.consultant_name)} (+${esc(d.consultant_phone)})!`
+      :`✅ Link preparado! <a href="${d.wa_consultant_url}" target="_blank">Clique aqui para abrir no WhatsApp do Consultor</a>`;
+    dispararToast('↗️ Lead Encaminhado!',`${name} repassado para ${d.consultant_name}.`,'ok');
+  }
 }
 
 async function abrirQrCodeInstancia(cid, instName){
@@ -1213,11 +1759,11 @@ async function atualizarQrCodeModal(){
     const d=await r.json();
     if(d.ok){
       if(d.state==='open'&&!d.qrcode_base64){
-        statusEl.innerHTML='🟢 <b>Aparelho já conectado e pronto para disparos!</b>';
+        statusEl.innerHTML='🟢 <b>Aparelho já conectado e pronto!</b>';
         boxEl.innerHTML='<div style="font-size:48px">✅</div>';
       }else if(d.qrcode_base64){
         const src=d.qrcode_base64.startsWith('data:image')?d.qrcode_base64:`data:image/png;base64,${d.qrcode_base64}`;
-        statusEl.textContent='Escaneie o QR Code abaixo com o WhatsApp do seu celular (renova sozinho a cada 30s):';
+        statusEl.textContent='Escaneie o QR Code abaixo com o WhatsApp do seu celular (renova a cada 28s):';
         boxEl.innerHTML=`<img src="${src}" alt="QR Code Evolution API">`;
         if(timerQrRefresh)clearTimeout(timerQrRefresh);
         timerQrRefresh=setTimeout(()=>{
@@ -1225,19 +1771,18 @@ async function atualizarQrCodeModal(){
         },28000);
       }else{
         statusEl.textContent=`Instância ${d.instance} criada (${d.state}). Clique em Atualizar QR Code.`;
-        boxEl.innerHTML='<span style="font-family:var(--f-mono);font-size:11.5px">Aguardando QR Code...</span>';
+        boxEl.innerHTML='<span>Aguardando QR Code...</span>';
       }
       if(d.pairing_code){
         pairEl.style.display='block';
-        pairEl.innerHTML=`Código de Pareamento numérico: <b>${esc(d.pairing_code)}</b>`;
+        pairEl.innerHTML=`Código de Pareamento: <b>${esc(d.pairing_code)}</b>`;
       }
       await carregarDashboard();
     }else{
       statusEl.innerHTML=`⚠️ <span style="color:var(--danger)">${esc(d.error||'Evolution API offline')}</span>`;
-      boxEl.innerHTML='<div style="padding:12px;font-family:var(--f-mono);font-size:11px;color:var(--muted)">Verifique se o container Docker da Evolution API está rodando na porta 8081.</div>';
     }
   }catch(e){
-    statusEl.textContent='Erro ao comunicar com o servidor local: '+e.message;
+    statusEl.textContent='Erro: '+e.message;
   }
 }
 
@@ -1253,79 +1798,14 @@ async function desconectarInstanciaAtual(){
 async function checarStatusEvolution(){
   const btn=document.getElementById('btnCheckEvo');
   btn.disabled=true;
-  btn.textContent='⏳ Sincronizando...';
+  btn.textContent='⏳ Sincronizando 50 Chips...';
   try{
     await fetch('/api/evolution/status',{method:'POST'});
     await carregarDashboard();
   }finally{
     btn.disabled=false;
-    btn.textContent='📡 Sincronizar Status';
+    btn.textContent='📡 Sincronizar Status (Evolution)';
   }
-}
-
-function renderFormularioCincoContas(){
-  const wrap=document.getElementById('formCincoContas');
-  wrap.innerHTML=contasCache.map(c=>`
-    <div class="slot-box" data-cid="${esc(c.id)}">
-      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid var(--ink);padding-bottom:6px">
-        <strong style="font-family:var(--f-head);font-size:14.5px;text-transform:uppercase;color:var(--wa-dark)">
-          📲 Chip #${c.slot} (${esc(c.id)})
-        </strong>
-        <label style="display:flex;align-items:center;gap:6px;font-family:var(--f-head);font-weight:700;cursor:pointer">
-          <input type="checkbox" class="acc-ativo" ${c.ativo?'checked':''}> Ativo no Pool Rotativo (Round-Robin)
-        </label>
-      </div>
-      <div class="form-grid" style="grid-template-columns:repeat(3,1fr)">
-        <div class="field">
-          <label>Nome / Apelido do Chip</label>
-          <input class="inp acc-nome" value="${esc(c.nome||'')}" placeholder="Ex: Chip Comercial #1">
-        </div>
-        <div class="field">
-          <label>Nome da Instância Evolution API</label>
-          <input class="inp acc-instance" value="${esc(c.instance_name||'chip_'+c.slot)}" placeholder="Ex: chip_${c.slot}">
-        </div>
-        <div class="field">
-          <label>Limite Diário Anti-Ban (Msgs/Dia)</label>
-          <input type="number" class="inp acc-limit" value="${c.daily_limit||60}" min="1" max="5000">
-        </div>
-        <div class="field">
-          <label>Número do Chip (Opcional · DDI +55)</label>
-          <input class="inp acc-tel" value="${esc(c.telefone_exibicao||'')}" placeholder="Ex: 5527999990001">
-        </div>
-        <div class="field">
-          <label>WhatsApp do Consultor (Recebe Leads)</label>
-          <input class="inp acc-consultor" value="${esc(c.consultant_phone||'')}" placeholder="Ex: 5527988887777">
-        </div>
-        <div class="field">
-          <label>API Key Específica (Opcional)</label>
-          <input type="password" class="inp acc-apikey" placeholder="Deixe vazio p/ usar a Global Key">
-        </div>
-      </div>
-    </div>
-  `).join('');
-}
-
-async function salvarCincoContas(){
-  const boxes=document.querySelectorAll('#formCincoContas .slot-box');
-  const payload=[];
-  boxes.forEach(b=>{
-    payload.push({
-      id:b.getAttribute('data-cid'),
-      ativo:b.querySelector('.acc-ativo').checked,
-      nome:b.querySelector('.acc-nome').value.trim(),
-      instance_name:b.querySelector('.acc-instance').value.trim(),
-      daily_limit:parseInt(b.querySelector('.acc-limit').value||'60',10),
-      telefone_exibicao:b.querySelector('.acc-tel').value.trim(),
-      consultant_phone:b.querySelector('.acc-consultor').value.trim(),
-      apikey:b.querySelector('.acc-apikey').value.trim()
-    });
-  });
-  await fetch('/api/accounts',{
-    method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({accounts:payload})
-  });
-  fecharModal('modalContas');
-  await carregarDashboard();
 }
 
 async function alternarContaAtiva(id){
@@ -1358,10 +1838,8 @@ function renderLeads(lista){
     tr.innerHTML=`
       <td style="font-family:var(--f-mono);font-weight:700">#${esc(l.id)}</td>
       <td><strong>${esc(l.nome||'-')}</strong></td>
-      <td style="font-family:var(--f-mono);color:var(--wa-dark);font-weight:700">+${esc(formatarTelefoneExibicao(telNorm))}</td>
-      <td>
-        ${cid?`<span class="badge" style="border-color:var(--wa);color:var(--wa-dark)">📲 ${esc(labelChip)}</span>`:'<span style="color:var(--muted);font-family:var(--f-mono);font-size:11px">— Na fila</span>'}
-      </td>
+      <td style="font-family:var(--f-mono);color:var(--wa);font-weight:700">+${esc(formatarTelefoneExibicao(telNorm))}</td>
+      <td>${cid?`<span class="badge">📲 ${esc(labelChip)}</span>`:'<span style="color:var(--muted);font-family:var(--f-mono);font-size:11px">— Fila</span>'}</td>
       <td><span class="st st-${esc(st)}">${esc(st)}</span></td>
       <td style="font-family:var(--f-mono)">${String(l.opt_out).toLowerCase()==='true'?'🚫 SIM':'Não'}</td>
       <td>
@@ -1370,8 +1848,8 @@ function renderLeads(lista){
       </td>
       <td>
         <div style="display:flex;gap:5px;flex-wrap:wrap">
-          ${st!=='opt_out'?`<a class="btn sm wa" href="${waUrl}" target="_blank" rel="noopener">📲 WhatsApp</a>`:''}
-          <button class="btn sm" type="button" onclick="selecionarParaSimular('${esc(telNorm)}','${esc(l.nome||'')}','${esc(cid)}')">🧪 Testar Resp</button>
+          ${st!=='opt_out'?`<a class="btn sm wa" href="${waUrl}" target="_blank">📲 WhatsApp</a>`:''}
+          <button class="btn sm brand" type="button" onclick="abrirModalEncaminhar('${esc(telNorm)}','${esc(l.nome||'')}')">↗️ Encaminhar</button>
           <select class="inp" style="width:auto;padding:3px 6px;font-size:11px" onchange="if(this.value)alterarStatusLead('${esc(l.id)}',this.value)">
             <option value="">Status...</option>
             <option value="novo">novo</option>
@@ -1399,14 +1877,6 @@ function renderEvents(evts){
   }).join('');
 }
 
-function selecionarParaSimular(tel,nome,cid){
-  document.getElementById('simPhone').value=tel;
-  document.getElementById('simName').value=nome;
-  if(cid)document.getElementById('simAccount').value=cid;
-  document.getElementById('simText').focus();
-  window.scrollTo({top:0,behavior:'smooth'});
-}
-
 async function simularRespostaWebhook(textoRapido){
   if(textoRapido)document.getElementById('simText').value=textoRapido;
   const phone=document.getElementById('simPhone').value.trim();
@@ -1424,19 +1894,20 @@ async function simularRespostaWebhook(textoRapido){
 async function pararDisparoCampanha(){
   await fetch('/api/campanha/parar',{method:'POST'});
   document.getElementById('campFeedback').textContent='🛑 Sinal de parada imediata enviado!';
+  dispararToast('🛑 Parada Solicitada','O lote atual será interrompido imediatamente.','warn');
 }
 
 async function executarDisparoCampanha(){
   const btn=document.getElementById('btnDisparar');
   const fb=document.getElementById('campFeedback');
   btn.disabled=true;
-  btn.textContent='⏳ Disparando via Evolution API...';
+  btn.textContent='⏳ Disparando...';
   const payload={
     dry_run:document.getElementById('campDryRun').value==='true',
     account_mode:document.getElementById('campAccountMode').value,
-    limit:parseInt(document.getElementById('campLimit').value||'10',10),
-    min_delay:parseFloat(document.getElementById('campMinDelay').value||'6'),
-    max_delay:parseFloat(document.getElementById('campMaxDelay').value||'15'),
+    limit:parseInt(document.getElementById('campLimit').value||'5',10),
+    min_delay:parseFloat(document.getElementById('campMinDelay').value||'15'),
+    max_delay:parseFloat(document.getElementById('campMaxDelay').value||'35'),
     force_hours:document.getElementById('campForceHours').value==='true',
     message:document.getElementById('campMensagem').value
   };
@@ -1447,18 +1918,21 @@ async function executarDisparoCampanha(){
     });
     const d=await r.json();
     if(d.ok){
-      const dist=Object.entries(d.per_account||{}).map(([k,v])=>`${k}: ${v}`).join(' | ');
+      const dist=Object.entries(d.per_account||{}).filter(([_,v])=>v>0).map(([k,v])=>`${k}: ${v}`).join(' | ');
       const cbMsg=d.circuit_breaker?` ⚠️ [${d.circuit_breaker_reason}]`:'';
-      fb.textContent=`✅ Rodada (${d.mode}): ${d.sent} enviado(s) [${dist}] · ${d.ja_conversado||0} já tinham conversa no celular · ${d.sem_whatsapp||0} s/ WhatsApp.${cbMsg}`;
+      fb.textContent=`✅ Rodada (${d.mode}): ${d.sent} enviado(s) [${dist||'0'}] · ${d.ja_conversado||0} já tinham conversa · ${d.sem_whatsapp||0} s/ WhatsApp.${cbMsg}`;
+      if(d.circuit_breaker)dispararToast('🚨 Quarentena Automática Acionada',d.circuit_breaker_reason,'danger');
+      else dispararToast('✅ Lote Concluído',`${d.sent} mensagem(ns) processada(s) no modo ${d.mode}.`,'ok');
       await carregarDashboard();
     }else{
       fb.textContent='⚠️ '+(d.error||'Falha ao disparar campanha');
+      dispararToast('⚠️ Aviso de Disparo',d.error||'Falha ao disparar','warn');
     }
   }catch(e){
     fb.textContent='⚠️ Erro: '+e.message;
   }finally{
     btn.disabled=false;
-    btn.textContent='🚀 Disparar Lote Evolution API';
+    btn.textContent='🚀 Disparar Lote';
   }
 }
 
@@ -1488,15 +1962,11 @@ async function salvarConfigEnv(){
 }
 
 function trocarAbaImportacao(aba){
-  const abas=['arquivos','colar','extrator','cnpj','url','evolution'];
-  abas.forEach(a=>{
+  ['arquivos','colar','extrator','cnpj','url','evolution'].forEach(a=>{
     const pane=document.getElementById('tabPane_'+a);
     const btn=document.getElementById('tabBtn_'+a);
     if(pane)pane.style.display=(a===aba?'grid':'none');
-    if(btn){
-      if(a===aba)btn.classList.add('wa');
-      else btn.classList.remove('wa');
-    }
+    if(btn)btn.classList.toggle('wa',a===aba);
   });
   document.getElementById('impResultadoBox').style.display='none';
 }
@@ -1513,41 +1983,23 @@ function exibirRelatorioImportacao(d, tituloExtra){
   const box=document.getElementById('impResultadoBox');
   box.style.display='block';
   if(!d.ok){
-    box.style.background='#fdf0ef';
     box.style.borderColor='var(--danger)';
-    box.innerHTML=`⚠️ <b>Erro na importação:</b> ${esc(d.error||'Falha ao processar dados')}`;
+    box.innerHTML=`⚠️ <b>Erro:</b> ${esc(d.error||'Falha ao importar')}`;
     return;
   }
-  box.style.background='#eaf7ef';
   box.style.borderColor='var(--ok)';
-  let html=`✅ <b>Importação concluída ${tituloExtra?('('+esc(tituloExtra)+')'):''}!</b><br>`;
-  html+=`• Novos leads adicionados: <b>${d.added||0}</b> | `;
-  html+=`Duplicados ignorados (já na base): <b>${d.duplicates||0}</b> | `;
-  html+=`Inválidos descartados: <b>${d.invalid||0}</b>`;
-  if(d.preview&&d.preview.length){
-    html+=`<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--ok);font-size:11px"><b>Exemplos adicionados:</b> `+
-      d.preview.map(p=>`${esc(p.nome)} (+${esc(p.telefone)})`).join(', ')+`</div>`;
-  }
-  if(d.cnpj_results&&d.cnpj_results.length){
-    html+=`<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--ok);font-size:11px"><b>Resultado Receita Federal:</b><br>`+
-      d.cnpj_results.map(c=>`• CNPJ ${esc(c.cnpj)}: <b>${esc(c.empresa)}</b> (${esc(c.telefone||'-')})`).join('<br>')+`</div>`;
-  }
-  box.innerHTML=html;
+  box.innerHTML=`✅ <b>Importação concluída (${esc(tituloExtra||'')})!</b> Novos: <b>${d.added||0}</b> | Duplicados ignorados: <b>${d.duplicates||0}</b> | Inválidos: <b>${d.invalid||0}</b>`;
 }
 
 async function executarImportacaoArquivos(){
   const inp=document.getElementById('impArquivosInput');
-  if(!inp.files||!inp.files.length){
-    exibirRelatorioImportacao({ok:false,error:'Selecione ao menos 1 arquivo (.xlsx, .csv, .vcf, .json ou .txt).'});
-    return;
-  }
+  if(!inp.files||!inp.files.length)return;
   const opts=_opcoesGlobaisImportacao();
   const fd=new FormData();
   for(let i=0;i<inp.files.length;i++)fd.append('files',inp.files[i]);
   fd.append('tag',opts.tag);
   fd.append('conta_id',opts.conta_id);
   fd.append('only_mobile',String(opts.only_mobile));
-
   const r=await fetch('/api/leads/importar_arquivo',{method:'POST',body:fd});
   const d=await r.json();
   exibirRelatorioImportacao(d,(d.files||[]).join(', '));
@@ -1560,25 +2012,12 @@ async function importarNovosLeads(modo){
   const nome=document.getElementById('impNome').value.trim();
   const telefone=document.getElementById('impTelefone').value.trim();
   const lote=(modo==='texto_bruto'?document.getElementById('impTextoBruto').value:document.getElementById('impLote').value).trim();
-
   const r=await fetch('/api/leads/importar',{
     method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({
-      modo:modo||'lote',
-      nome,
-      telefone,
-      lote,
-      tag:opts.tag,
-      conta_id:opts.conta_id,
-      only_mobile:opts.only_mobile
-    })
+    body:JSON.stringify({modo:modo||'lote',nome,telefone,lote,tag:opts.tag,conta_id:opts.conta_id,only_mobile:opts.only_mobile})
   });
   const d=await r.json();
   exibirRelatorioImportacao(d,modo==='texto_bruto'?'Caçador de Telefones':'Planilha / Manual');
-  document.getElementById('impNome').value='';
-  document.getElementById('impTelefone').value='';
-  if(modo==='texto_bruto')document.getElementById('impTextoBruto').value='';
-  else document.getElementById('impLote').value='';
   await carregarDashboard();
 }
 
@@ -1588,18 +2027,16 @@ async function executarImportacaoCnpj(){
   if(!cnpjs)return;
   const opts=_opcoesGlobaisImportacao();
   btn.disabled=true;
-  btn.textContent='⏳ Consultando Receita Federal (BrasilAPI)...';
   try{
     const r=await fetch('/api/leads/importar_cnpj',{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({cnpjs,tag:opts.tag||'CNPJ',conta_id:opts.conta_id})
     });
     const d=await r.json();
-    exibirRelatorioImportacao(d,'Consulta CNPJ Receita');
+    exibirRelatorioImportacao(d,'Receita Federal');
     await carregarDashboard();
   }finally{
     btn.disabled=false;
-    btn.textContent='🏢 Consultar CNPJs na Receita e Importar';
   }
 }
 
@@ -1612,7 +2049,7 @@ async function executarImportacaoUrl(){
     body:JSON.stringify({url,tag:opts.tag||'Google Sheets',conta_id:opts.conta_id,only_mobile:opts.only_mobile})
   });
   const d=await r.json();
-  exibirRelatorioImportacao(d,'Planilha via Link');
+  exibirRelatorioImportacao(d,'Link Planilha');
   await carregarDashboard();
 }
 
@@ -1623,8 +2060,35 @@ async function executarImportacaoEvolution(){
     body:JSON.stringify({conta_id,assign_to_chip:true})
   });
   const d=await r.json();
-  exibirRelatorioImportacao(d,'Agenda Evolution '+(d.instance||conta_id));
+  exibirRelatorioImportacao(d,'Agenda '+conta_id);
   await carregarDashboard();
+}
+
+/* RELÓGIO LOCAL DE 1 SEGUNDO PARA ATUALIZAR OS TIMERS REGRESSIVOS DE RESTRIÇÃO NA TELA */
+setInterval(()=>{
+  let algumExpirou=false;
+  contasCache.forEach(c=>{
+    if((c.cooldown_seconds||0)>0){
+      c.cooldown_seconds=Math.max(0,c.cooldown_seconds-1);
+      if(c.cooldown_seconds===0)algumExpirou=true;
+      document.querySelectorAll(`[data-cooldown-cid="${c.id}"]`).forEach(el=>{
+        el.textContent='⏳ '+formatarSegundos(c.cooldown_seconds);
+      });
+    }
+  });
+  if(algumExpirou)carregarDashboard();
+},1000);
+
+/* AUTO-REFRESH DE 4 SEGUNDOS PARA SEGUNDA TELA NOC PERMANENTE E NOTIFICAÇÕES AO VIVO */
+setInterval(()=>{
+  if(visaoAtual==='segunda_tela'||document.body.classList.contains('noc-mode')){
+    carregarDashboard();
+  }
+},4000);
+
+/* SE ABRIR COM ?tv=1 (BOTÃO 2ª TELA PERMANENTE), ATIVA MODO NOC AUTOMATICAMENTE */
+if(window.location.search.includes('tv=1')){
+  mudarVisao('segunda_tela');
 }
 
 carregarDashboard();
