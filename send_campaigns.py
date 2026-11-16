@@ -83,6 +83,97 @@ SAUDACOES_VARIADAS = [
     "Olá, como vai?",
 ]
 
+WARMUP_TIERS = {
+    "dia_1_3": {"label": "🌱 Aquecimento Inicial (Dias 1–3)", "max_daily": 10},
+    "dia_4_7": {"label": "🌿 Aquecimento Médio (Dias 4–7)", "max_daily": 25},
+    "dia_8_14": {"label": "🌳 Aquecimento Avançado (Dias 8–14)", "max_daily": 45},
+    "producao": {"label": "🚀 Produção Plena (15+ dias)", "max_daily": 60},
+}
+
+WARMUP_PING_FRASES = [
+    "Bom dia! Tudo certo por aí?",
+    "Oi, tudo bem? Passando só para confirmar o horário de hoje.",
+    "Olá! Conseguiu ver aquele documento que combinamos?",
+    "Tudo ótimo por aqui, e com você?",
+    "Show! Qualquer novidade me avisa por aqui 👍",
+]
+
+
+def calcular_limite_efetivo_chip(account: Dict) -> int:
+    """Retorna o menor valor entre daily_limit configurado e o teto seguro do estágio de Warm-Up."""
+    cfg_lim = int(account.get("daily_limit", DAILY_MESSAGE_LIMIT))
+    tier = str(account.get("warmup_tier") or "producao").strip().lower()
+    if tier in WARMUP_TIERS:
+        return min(cfg_lim, WARMUP_TIERS[tier]["max_daily"])
+    return cfg_lim
+
+
+def calcular_saude_chip(account: Dict, metrica: Optional[Dict] = None) -> int:
+    """Calcula o Health Score Anti-Ban (0 a 100) com base em erros, uso da cota, cooldown e engajamento."""
+    score = 100
+    if conta_em_quarentena(account) > 0:
+        score -= 45
+    erros = int(account.get("erros_hoje", 0))
+    score -= min(40, erros * 15)
+    lim = max(1, calcular_limite_efetivo_chip(account))
+    uso = int(account.get("enviados_hoje", 0)) / lim
+    if uso > 0.9:
+        score -= 15
+    elif uso > 0.75:
+        score -= 5
+    if str(account.get("connection_status", "")).lower() != "open":
+        score -= 20
+    if metrica:
+        resp = int(metrica.get("interessados", 0)) + int(metrica.get("respondeu", 0))
+        opt = int(metrica.get("opt_out", 0))
+        score += min(10, resp * 2)
+        score -= min(15, opt * 3)
+    return max(0, min(100, score))
+
+
+def executar_aquecimento_cruzado(contas_conectadas: List[Dict]) -> Dict:
+    """
+    Executa 1 troca de mensagem natural entre 2 chips de prospecção conectados (que possuam número conhecido)
+    para gerar histórico bidirecional orgânico (método validado de Warm-Up).
+    """
+    elegiveis = [
+        c for c in contas_conectadas
+        if not c.get("admin_only")
+        and c.get("id") != "conta_admin"
+        and str(c.get("connection_status", "")).lower() == "open"
+        and conta_em_quarentena(c) == 0
+        and normalize_phone(c.get("telefone_exibicao", ""))
+    ]
+    if len(elegiveis) < 2:
+        return {
+            "ok": False,
+            "error": "São necessários pelo menos 2 chips de prospecção 🟢 CONECTADOS com o campo 'Número do Chip' preenchido para o aquecimento cruzado.",
+        }
+
+    remetente, destinatario = random.sample(elegiveis, 2)
+    tel_dest = normalize_phone(destinatario.get("telefone_exibicao", ""))
+    frase_1 = random.choice(WARMUP_PING_FRASES)
+    inst_1 = remetente.get("instance_name")
+    base = _evo_base_url()
+
+    try:
+        r1 = requests.post(
+            f"{base}/message/sendText/{inst_1}",
+            headers=_evo_headers(remetente),
+            json={"number": tel_dest, "text": frase_1, "delay": 1500, "linkPreview": False},
+            timeout=15,
+        )
+        r1.raise_for_status()
+        return {
+            "ok": True,
+            "from_instance": inst_1,
+            "to_instance": destinatario.get("instance_name"),
+            "to_phone": tel_dest,
+            "message": frase_1,
+        }
+    except Exception as e:
+        return {"ok": False, "error": f"Falha no ping de aquecimento ({inst_1} -> {destinatario.get('instance_name')}): {e}"}
+
 
 def normalize_phone(phone: str) -> str:
     """Remove caracteres não numéricos e garante o DDI 55 (Brasil) para telefones de 10 ou 11 dígitos."""
@@ -572,6 +663,73 @@ def _evo_base_url() -> str:
     return os.getenv("EVOLUTION_API_URL", EVOLUTION_API_URL).rstrip("/")
 
 
+def parse_proxy_url(proxy_url: str) -> Optional[Dict]:
+    """Converte URL de proxy (http://user:pass@host:port ou socks5://...) em payload Evolution API."""
+    raw = str(proxy_url or "").strip()
+    if not raw:
+        return None
+    if "://" not in raw:
+        raw = f"http://{raw}"
+    from urllib.parse import urlparse
+    u = urlparse(raw)
+    if not u.hostname or not u.port:
+        return None
+    return {
+        "enabled": True,
+        "host": u.hostname,
+        "port": str(u.port),
+        "protocol": (u.scheme or "http").lower(),
+        "username": u.username or "",
+        "password": u.password or "",
+    }
+
+
+def evolution_set_proxy(account: Dict, proxy_url: str) -> Dict:
+    """Configura ou desativa o proxy de uma instância específica na Evolution API (/proxy/set/{instance})."""
+    inst = account.get("instance_name") or f"chip_{account.get('slot', 1)}"
+    base = _evo_base_url()
+    parsed = parse_proxy_url(proxy_url)
+    payload = parsed or {"enabled": False, "host": "", "port": "", "protocol": "http", "username": "", "password": ""}
+    try:
+        resp = requests.post(
+            f"{base}/proxy/set/{inst}",
+            headers=_evo_headers(account),
+            json=payload,
+            timeout=6,
+        )
+        if resp.ok:
+            return {"ok": True, "instance": inst, "enabled": bool(parsed), "host": parsed["host"] if parsed else ""}
+        return {"ok": False, "instance": inst, "error": f"HTTP {resp.status_code}: {resp.text[:160]}"}
+    except Exception as e:
+        return {"ok": False, "instance": inst, "error": str(e)}
+
+
+def intercalar_contas_por_aparelho(contas: List[Dict]) -> List[Dict]:
+    """
+    Reordena os chips intercalando por 'device_label' (Celular #1 -> Celular #2 -> ... -> Celular #7)
+    para que envios consecutivos nunca concentrem rajadas no mesmo aparelho físico ou mesmo proxy/IP.
+    """
+    if len(contas) <= 1:
+        return contas
+    grupos: Dict[str, List[Dict]] = {}
+    for c in contas:
+        chave = str(c.get("device_label") or "").strip().lower() or str(c.get("id"))
+        grupos.setdefault(chave, []).append(c)
+    chaves = list(grupos.keys())
+    intercaladas: List[Dict] = []
+    idx = 0
+    while True:
+        adicionou = False
+        for k in chaves:
+            if idx < len(grupos[k]):
+                intercaladas.append(grupos[k][idx])
+                adicionou = True
+        if not adicionou:
+            break
+        idx += 1
+    return intercaladas
+
+
 def evolution_check_connection(account: Dict) -> Dict:
     """Consulta o status real da instância na Evolution API (/instance/connectionState/{instance})."""
     inst = account.get("instance_name") or ("chip_admin" if account.get("id") == "conta_admin" else f"chip_{account.get('slot', 1)}")
@@ -804,7 +962,7 @@ def get_active_accounts(selected_account_id: str = "todas_ativas", dry_run: bool
             if str(chk.get("state", "")).lower() == "open":
                 conectadas.append(c)
         filtradas = conectadas
-    return filtradas
+    return intercalar_contas_por_aparelho(filtradas)
 
 
 def registrar_disparo_conta(account_id: str) -> None:
@@ -918,10 +1076,11 @@ def send_whatsapp_message(
     url = f"{base}/message/sendText/{instance_name}"
     headers = _evo_headers(conta_ativa)
 
+    typing_delay = min(4500, max(TYPING_MS, len(texto_final) * 25))
     payload = {
         "number": formatted_number,
         "text": texto_final,
-        "delay": TYPING_MS,
+        "delay": typing_delay,
         "linkPreview": False,
     }
 

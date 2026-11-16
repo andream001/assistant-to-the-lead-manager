@@ -6,11 +6,13 @@ recebeu a mensagem, responde pelo mesmo chip e notifica o consultor responsável
 """
 
 import csv
+import hashlib
 import io
 import json
 import logging
 import math
 import os
+import queue
 import random
 import re
 import threading
@@ -21,7 +23,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import requests
-from flask import Flask, jsonify, request, send_file
+from flask import Flask, jsonify, redirect, render_template_string, request, send_file, session, url_for
 from dotenv import load_dotenv
 
 from send_campaigns import (
@@ -31,13 +33,18 @@ from send_campaigns import (
     EVOLUTION_API_URL,
     MAX_WHATSAPP_ACCOUNTS,
     MENSAGEM_PADRAO_PROSPECCAO,
+    WARMUP_TIERS,
     aplicar_quarentena_conta,
     atualizar_lead_pos_disparo,
+    calcular_limite_efetivo_chip,
+    calcular_saude_chip,
     conta_em_quarentena,
     escolher_consultor_destino,
     evolution_check_connection,
     evolution_create_or_connect_instance,
     evolution_logout_instance,
+    evolution_set_proxy,
+    executar_aquecimento_cruzado,
     get_active_accounts,
     get_admin_account,
     is_business_hours,
@@ -46,6 +53,7 @@ from send_campaigns import (
     limpar_quarentena_conta,
     load_routing_config,
     load_whatsapp_accounts,
+    parse_proxy_url,
     reconciliar_eventos_no_csv,
     registrar_disparo_conta,
     registrar_encaminhamento_permanente,
@@ -68,8 +76,93 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 app = Flask(__name__)
+app.secret_key = os.getenv("FLASK_SECRET_KEY") or hashlib.sha256(f"{EVOLUTION_API_KEY}_panel".encode()).hexdigest()
+PANEL_USER = os.getenv("PANEL_USER", "admin")
+PANEL_PASSWORD = os.getenv("PANEL_PASSWORD", "leadmanager2026")
+PANEL_AUTH_ENABLED = os.getenv("PANEL_AUTH_ENABLED", "true").lower() == "true"
 CAMPANHA_LOCK = threading.Lock()
+CAMPAIGN_STATE_LOCK = threading.Lock()
 STOP_CAMPANHA_FLAG = False
+CAMPAIGN_STATUS: Dict = {
+    "running": False,
+    "mode": "",
+    "target": 0,
+    "sent": 0,
+    "attempts": 0,
+    "ja_conversado": 0,
+    "sem_whatsapp": 0,
+    "workers_total": 0,
+    "workers_active": 0,
+    "per_account": {},
+    "circuit_breaker": False,
+    "circuit_breaker_reason": "",
+    "started_at": "",
+    "finished_at": "",
+}
+
+
+def _mask_secret(val: str) -> str:
+    s = str(val or "").strip()
+    if len(s) <= 4:
+        return "****" if s else ""
+    return "****" + s[-4:]
+
+
+LOGIN_HTML = """<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Login · Lead Manager NOC</title>
+<style>
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f172a;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif}
+  .box{width:min(380px,92vw);background:#1e293b;border:2px solid #334155;border-radius:10px;padding:24px;box-shadow:0 18px 40px rgba(0,0,0,.45)}
+  h1{margin:0 0 6px;font-size:20px}
+  p{margin:0 0 18px;font-size:12.5px;color:#94a3b8}
+  label{display:block;font-size:12px;font-weight:700;margin-bottom:4px;color:#cbd5e1}
+  input{width:100%;box-sizing:border-box;padding:10px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#fff;margin-bottom:12px;font-size:14px}
+  button{width:100%;padding:11px;border:0;border-radius:6px;background:#10b981;color:#fff;font-weight:800;font-size:14px;cursor:pointer}
+  button:hover{background:#059669}
+  .err{background:#7f1d1d;border:1px solid #ef4444;color:#fecaca;padding:8px 10px;border-radius:6px;font-size:12.5px;margin-bottom:12px}
+</style></head><body>
+<form class="box" method="post" action="/login">
+  <h1>🔐 Acesso Restrito · NOC</h1>
+  <p>Informe suas credenciais para acessar o painel de operação.</p>
+  {% if error %}<div class="err">{{ error }}</div>{% endif %}
+  <label>Usuário</label><input name="username" value="admin" required autofocus>
+  <label>Senha</label><input type="password" name="password" placeholder="Senha de acesso" required>
+  <button type="submit">Entrar no Painel</button>
+</form></body></html>"""
+
+
+@app.before_request
+def _require_panel_auth():
+    if not PANEL_AUTH_ENABLED:
+        return None
+    p = request.path or "/"
+    if p in ("/login", "/logout", "/health") or p.startswith("/webhook"):
+        return None
+    if session.get("authenticated"):
+        return None
+    if p.startswith("/api/"):
+        return jsonify({"ok": False, "error": "Sessão expirada ou não autenticada. Faça login."}), 401
+    return redirect(url_for("login_page"))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login_page():
+    if request.method == "POST":
+        user = str(request.form.get("username") or "").strip()
+        pwd = str(request.form.get("password") or "").strip()
+        if user == PANEL_USER and pwd == PANEL_PASSWORD:
+            session["authenticated"] = True
+            session["user"] = user
+            return redirect("/")
+        return render_template_string(LOGIN_HTML, error="Usuário ou senha inválidos."), 401
+    return render_template_string(LOGIN_HTML, error="")
+
+
+@app.route("/logout", methods=["GET", "POST"])
+def logout_page():
+    session.clear()
+    return redirect(url_for("login_page"))
 
 BASE_DIR = Path(__file__).resolve().parent
 WEBHOOK_VERIFY_TOKEN = os.getenv("WEBHOOK_VERIFY_TOKEN", "seu_token_secreto")
@@ -543,12 +636,18 @@ def handle_webhook(subpath: Optional[str] = None):
                             c["nivel_risco"] = "BAIXO"
                         break
                 save_whatsapp_accounts(contas)
-                if new_state == "refused" or status_reason in ("401", "403", "428", "515"):
-                    aplicar_quarentena_conta(
-                        instance_name,
-                        f"CONN_{new_state.upper()}_{status_reason or 'DROP'}",
-                        f"Evolution connection state={new_state} reason={status_reason}",
-                    )
+                if new_state in ("close", "refused") or status_reason in ("401", "403", "408", "428", "440", "515"):
+                    detalhe_drop = f"Evolution connection state={new_state} reason={status_reason or 'desconhecido'}"
+                    if new_state == "close" and status_reason == "401":
+                        detalhe_drop = "401 Unauthorized · Aparelho desconectado / sessão removida no WhatsApp (device_removed ou logout)."
+                    elif new_state == "close" and status_reason in ("428", "408", "515"):
+                        detalhe_drop = f"HTTP {status_reason} · Queda temporária de socket/rede no Baileys."
+                    if new_state == "refused" or status_reason in ("401", "403", "428", "440", "515"):
+                        aplicar_quarentena_conta(
+                            instance_name,
+                            f"CONN_{new_state.upper()}_{status_reason or 'DROP'}",
+                            detalhe_drop,
+                        )
                 log_event("evolution_connection", instance_name, {"instance": instance_name, "state": new_state, "reason": status_reason})
                 return jsonify({"status": "connection_updated", "state": new_state}), 200
 
@@ -644,9 +743,16 @@ def _sanitize_accounts_for_ui(contas: List[Dict], stats_por_conta: Dict[str, Dic
             "ativo": False if is_admin else bool(c.get("ativo", False)),
             "connection_status": conn_state,
             "telefone_exibicao": c.get("telefone_exibicao", ""),
+            "profile_name": c.get("profile_name", ""),
+            "device_label": c.get("device_label", ""),
+            "has_proxy": bool(str(c.get("proxy_url") or "").strip()),
+            "proxy_host": (parse_proxy_url(str(c.get("proxy_url") or "")) or {}).get("host", ""),
             "has_custom_apikey": bool(apikey_raw),
             "consultant_phone": c.get("consultant_phone", ""),
             "daily_limit": int(c.get("daily_limit", 60)),
+            "effective_daily_limit": int(c.get("daily_limit", 500)) if is_admin else calcular_limite_efetivo_chip(c),
+            "warmup_tier": c.get("warmup_tier", "producao"),
+            "health_score": 100 if is_admin else calcular_saude_chip(c, metrica),
             "enviados_hoje": int(c.get("enviados_hoje", 0)),
             "erros_hoje": int(c.get("erros_hoje", 0)),
             "ultimo_disparo_em": c.get("ultimo_disparo_em", ""),
@@ -756,9 +862,9 @@ def api_dashboard():
 
         config_info = {
             "evolution_api_url": os.getenv("EVOLUTION_API_URL", EVOLUTION_API_URL),
-            "evolution_api_key": os.getenv("EVOLUTION_API_KEY", EVOLUTION_API_KEY),
+            "evolution_api_key": _mask_secret(os.getenv("EVOLUTION_API_KEY", EVOLUTION_API_KEY)),
             "consultant_phone": os.getenv("CONSULTANT_PHONE_NUMBER", ""),
-            "verify_token": os.getenv("WEBHOOK_VERIFY_TOKEN", ""),
+            "verify_token": _mask_secret(os.getenv("WEBHOOK_VERIFY_TOKEN", "")),
             "daily_limit": int(os.getenv("DAILY_MESSAGE_LIMIT", 60)),
             "min_delay": float(os.getenv("MIN_DELAY", 15.0)),
             "max_delay": float(os.getenv("MAX_DELAY", 35.0)),
@@ -780,6 +886,7 @@ def api_dashboard():
             "restrictions": restrictions_log,
             "forwards": forwards_log,
             "routing": routing_cfg,
+            "campaign": dict(CAMPAIGN_STATUS),
             "leads": paginated,
             "filtered_total": total_filtered,
             "page": page,
@@ -814,17 +921,68 @@ def api_evolution_qrcode():
 
 @app.route("/api/evolution/status", methods=["POST"])
 def api_evolution_status():
-    """Consulta em tempo real na Evolution API o estado das 5 instâncias (open, connecting, close)."""
+    """Consulta em tempo real na Evolution API o estado das instâncias e captura motivos de queda (/instance/fetchInstances)."""
     contas = load_whatsapp_accounts()
     estados = {}
     online_any = False
-    for c in contas:
-        res = evolution_check_connection(c)
-        if res.get("online"):
+
+    # Busca lote completo via /instance/fetchInstances para obter connectionStatus e disconnectionReasonCode em 1 chamada
+    info_por_inst: Dict[str, Dict] = {}
+    base = os.getenv("EVOLUTION_API_URL", EVOLUTION_API_URL).rstrip("/")
+    apikey = os.getenv("EVOLUTION_API_KEY", EVOLUTION_API_KEY)
+    try:
+        r_all = requests.get(f"{base}/instance/fetchInstances", headers={"apikey": apikey}, timeout=4)
+        if r_all.ok and isinstance(r_all.json(), list):
             online_any = True
-        c["connection_status"] = res.get("state", "close")
-        estados[c["id"]] = res
+            for item in r_all.json():
+                if isinstance(item, dict) and item.get("name"):
+                    info_por_inst[item["name"]] = item
+    except Exception:
+        pass
+
+    quedas_novas: List[Tuple[str, str, str]] = []
+    for c in contas:
+        inst = c.get("instance_name") or ""
+        if inst in info_por_inst:
+            ev_i = info_por_inst[inst]
+            st_real = str(ev_i.get("connectionStatus") or "close").lower()
+            c["connection_status"] = st_real
+            owner_num = normalize_phone(str(ev_i.get("ownerJid") or ev_i.get("number") or ""))
+            if owner_num:
+                c["telefone_exibicao"] = owner_num
+            prof_nm = str(ev_i.get("profileName") or "").strip()
+            if prof_nm and prof_nm != ".":
+                c["profile_name"] = prof_nm
+            disc_code = ev_i.get("disconnectionReasonCode")
+            disc_at = str(ev_i.get("disconnectionAt") or "")
+            disc_obj = ev_i.get("disconnectionObject") or {}
+            msg_disc = ""
+            if isinstance(disc_obj, dict):
+                err_o = disc_obj.get("error") or {}
+                if isinstance(err_o, dict):
+                    msg_disc = (
+                        err_o.get("output", {}).get("payload", {}).get("message")
+                        or err_o.get("data", {}).get("attrs", {}).get("type")
+                        or ""
+                    )
+            if st_real == "close" and disc_code:
+                detalhe_full = f"Código {disc_code} ({msg_disc or 'Desconectado'}) em {disc_at[:19].replace('T', ' ')}"
+                if c.get("ultimo_erro_detalhe") != detalhe_full:
+                    c["ultimo_erro_detalhe"] = detalhe_full
+                    quedas_novas.append((c["id"], f"DROP_{disc_code}", detalhe_full))
+            estados[c["id"]] = {"ok": True, "online": True, "state": st_real, "instance": inst, "disconnectionReasonCode": disc_code}
+        elif c.get("ativo") or c.get("id") == "conta_admin":
+            res = evolution_check_connection(c)
+            if res.get("online"):
+                online_any = True
+            c["connection_status"] = res.get("state", "close")
+            estados[c["id"]] = res
+        else:
+            estados[c["id"]] = {"ok": True, "online": online_any, "state": c.get("connection_status", "close"), "instance": inst}
+
     save_whatsapp_accounts(contas)
+    for cid_q, cod_q, det_q in quedas_novas:
+        aplicar_quarentena_conta(cid_q, cod_q, det_q)
     return jsonify({"ok": True, "evolution_online": online_any, "statuses": estados}), 200
 
 
@@ -905,6 +1063,8 @@ def api_accounts():
                     atual["ativo"] = bool(item["ativo"])
                 if "telefone_exibicao" in item:
                     atual["telefone_exibicao"] = normalize_phone(str(item["telefone_exibicao"] or ""))
+                if "device_label" in item:
+                    atual["device_label"] = str(item["device_label"] or "").strip()
                 if "consultant_phone" in item:
                     atual["consultant_phone"] = normalize_phone(str(item["consultant_phone"] or ""))
                 if "daily_limit" in item:
@@ -912,6 +1072,21 @@ def api_accounts():
                         atual["daily_limit"] = max(1, int(item["daily_limit"]))
                     except Exception:
                         pass
+                if "warmup_tier" in item:
+                    wt = str(item["warmup_tier"] or "producao").strip().lower()
+                    if wt in WARMUP_TIERS:
+                        atual["warmup_tier"] = wt
+                if "proxy_url" in item:
+                    p_raw = str(item.get("proxy_url") or "").strip()
+                    if not p_raw.startswith("****"):
+                        atual["proxy_url"] = p_raw
+                        evolution_set_proxy(atual, p_raw)
+                        if item.get("apply_device_proxy") and atual.get("device_label"):
+                            dev_alvo = str(atual["device_label"]).strip().lower()
+                            for outro in contas:
+                                if outro.get("id") != cid and str(outro.get("device_label") or "").strip().lower() == dev_alvo:
+                                    outro["proxy_url"] = p_raw
+                                    evolution_set_proxy(outro, p_raw)
                 nova_key = str(item.get("apikey", "") or "").strip()
                 if nova_key:
                     atual["apikey"] = nova_key
@@ -1105,9 +1280,20 @@ def api_parar_campanha():
     return jsonify({"ok": True, "message": "Sinal de parada imediata enviado."}), 200
 
 
+@app.route("/api/campanha/progresso", methods=["GET"])
+def api_progresso_campanha():
+    """Retorna o progresso em tempo real dos workers paralelos de disparo."""
+    with CAMPAIGN_STATE_LOCK:
+        return jsonify({"ok": True, "campaign": dict(CAMPAIGN_STATUS)}), 200
+
+
 @app.route("/api/campanha/disparar", methods=["POST"])
 def api_disparar_campanha():
-    """Executa um lote controlado da campanha via Evolution API com trava de exclusividade (Lock) e Anti-Reenvio."""
+    """
+    Executa um lote controlado em Workers Paralelos por Celular Físico (1 thread por aparelho):
+    - Cada celular respeita seu próprio Jitter Anti-Ban e Batch Cooling.
+    - Não bloqueia o navegador e evita timeouts em lotes grandes com 7+ celulares.
+    """
     global STOP_CAMPANHA_FLAG
     if not CAMPANHA_LOCK.acquire(blocking=False):
         return jsonify({
@@ -1128,6 +1314,7 @@ def api_disparar_campanha():
 
         contas_aptas = get_active_accounts(account_mode, dry_run=dry_run)
         if not contas_aptas:
+            CAMPANHA_LOCK.release()
             return jsonify({
                 "ok": False,
                 "error": (
@@ -1137,139 +1324,195 @@ def api_disparar_campanha():
             }), 400
 
         if not os.path.exists(LEADS_CSV):
+            CAMPANHA_LOCK.release()
             return jsonify({"ok": False, "error": "Arquivo data/leads.csv não encontrado."}), 404
 
-        leads: List[Dict] = []
-        with open(LEADS_CSV, "r", encoding="utf-8", errors="replace") as f:
-            reader = csv.DictReader(f)
-            fieldnames = list(reader.fieldnames or COLUNAS_PADRAO)
-            for row in reader:
-                row.pop(None, None)
-                row["telefone"] = normalize_phone(row.get("telefone", ""))
-                leads.append(row)
-
-        sent = 0
-        attempts = 0
+        fila_leads: queue.Queue = queue.Queue()
         skipped_sent = 0
         skipped_opt_out = 0
-        ja_conversado_count = 0
-        sem_whatsapp_count = 0
-        circuit_breaker_triggered = False
-        circuit_breaker_reason = ""
-        por_conta: Dict[str, int] = {c["id"]: 0 for c in contas_aptas}
-        rr_idx = 0
+        with CSV_LOCK:
+            with open(LEADS_CSV, "r", encoding="utf-8", errors="replace") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    row.pop(None, None)
+                    opt_out_val = str(row.get("opt_out", "false")).strip().lower()
+                    status_atual = str(row.get("status", "novo")).strip().lower()
+                    if opt_out_val == "true" or status_atual == "opt_out":
+                        skipped_opt_out += 1
+                        continue
+                    if status_atual not in ("novo", "", "pendente"):
+                        skipped_sent += 1
+                        continue
+                    tel = normalize_phone(row.get("telefone", ""))
+                    if tel:
+                        row["telefone"] = tel
+                        fila_leads.put(row)
 
-        for lead in leads:
-            if STOP_CAMPANHA_FLAG:
-                circuit_breaker_triggered = True
-                circuit_breaker_reason = "Disparo interrompido manualmente pelo usuário."
-                break
-            if sent >= limit or attempts >= limit or not contas_aptas:
-                break
-            opt_out_val = str(lead.get("opt_out", "false")).strip().lower()
-            status_atual = str(lead.get("status", "novo")).strip().lower()
-            if opt_out_val == "true" or status_atual == "opt_out":
-                skipped_opt_out += 1
-                continue
-            if status_atual not in ("novo", "", "pendente"):
-                skipped_sent += 1
-                continue
-            tel = lead.get("telefone", "")
-            if not tel:
-                continue
+        if fila_leads.empty():
+            CAMPANHA_LOCK.release()
+            return jsonify({"ok": False, "error": "Nenhum lead com status 'novo' disponível na fila."}), 400
 
-            conta_escolhida = None
-            for _ in range(len(contas_aptas)):
-                candidata = contas_aptas[rr_idx % len(contas_aptas)]
-                rr_idx += 1
-                if int(candidata.get("enviados_hoje", 0)) < int(candidata.get("daily_limit", 60)):
-                    conta_escolhida = candidata
-                    break
+        # Agrupa chips por Aparelho Físico (device_label) para rodar 1 Worker paralelo por Celular!
+        grupos_dispositivo: Dict[str, List[Dict]] = {}
+        for c in contas_aptas:
+            dev_key = str(c.get("device_label") or "").strip() or c["id"]
+            grupos_dispositivo.setdefault(dev_key, []).append(c)
 
-            if not conta_escolhida:
-                break
+        with CAMPAIGN_STATE_LOCK:
+            CAMPAIGN_STATUS.update({
+                "running": True,
+                "mode": "DRY-RUN" if dry_run else "EVOLUTION-LIVE",
+                "target": limit,
+                "sent": 0,
+                "attempts": 0,
+                "ja_conversado": 0,
+                "sem_whatsapp": 0,
+                "skipped_sent": skipped_sent,
+                "skipped_opt_out": skipped_opt_out,
+                "workers_total": len(grupos_dispositivo),
+                "workers_active": len(grupos_dispositivo),
+                "per_account": {c["id"]: 0 for c in contas_aptas},
+                "circuit_breaker": False,
+                "circuit_breaker_reason": "",
+                "started_at": datetime.now().isoformat(),
+                "finished_at": "",
+            })
 
-            resp = send_whatsapp_message(
-                tel,
-                custom_msg,
-                dry_run=dry_run,
-                force_outside_hours=force_hours,
-                account=conta_escolhida,
-                lead_name=lead.get("nome", ""),
-            )
-            # Se o número já tinha histórico no aparelho ou no cofre permanente, marca como enviado sem gastar tentativa/espera!
-            if resp and resp.get("error") in ("ja_enviado_historico", "ja_conversado_no_chip"):
-                lead["status"] = "enviado"
-                lead["conta_id"] = conta_escolhida["id"]
-                lead["ultima_interacao_em"] = lead.get("ultima_interacao_em") or datetime.now().isoformat()
-                ja_conversado_count += 1
-                skipped_sent += 1
-                atualizar_lead_pos_disparo(tel, conta_escolhida["id"], status_novo="enviado")
-                continue
+        def _worker_dispositivo(dev_name: str, chips_grupo: List[Dict]) -> None:
+            local_chips = list(chips_grupo)
+            rr_local = 0
+            envios_worker = 0
+            try:
+                while local_chips and not STOP_CAMPANHA_FLAG:
+                    with CAMPAIGN_STATE_LOCK:
+                        if CAMPAIGN_STATUS["sent"] >= limit or CAMPAIGN_STATUS["attempts"] >= limit:
+                            break
+                        CAMPAIGN_STATUS["attempts"] += 1
+                        reservado = True
 
-            attempts += 1
-            if resp and "messages" in resp:
-                cid = conta_escolhida["id"]
-                inst_name = conta_escolhida.get("instance_name", cid)
-                msg_id = resp["messages"][0].get("id", "")
-                lead["status"] = "enviado"
-                lead["conta_id"] = cid
-                lead["message_id"] = msg_id
-                lead["ultima_interacao_em"] = datetime.now().isoformat()
-                sent += 1
-                por_conta[cid] = por_conta.get(cid, 0) + 1
-                conta_escolhida["enviados_hoje"] = int(conta_escolhida.get("enviados_hoje", 0)) + 1
-                registrar_disparo_conta(cid)
-                atualizar_lead_pos_disparo(tel, cid, message_id=msg_id, status_novo="enviado")
-                log_event(
-                    "campaign_sent",
-                    tel,
-                    {
-                        "account_id": cid,
-                        "instance_name": inst_name,
-                        "account_name": conta_escolhida.get("nome", cid),
-                        "dry_run": dry_run,
-                        "message_id": msg_id,
-                    },
-                )
-            elif resp and resp.get("error") == "sem_whatsapp":
-                lead["status"] = "sem_whatsapp"
-                lead["ultima_interacao_em"] = datetime.now().isoformat()
-                sem_whatsapp_count += 1
-                atualizar_lead_pos_disparo(tel, conta_escolhida["id"], status_novo="sem_whatsapp")
-            elif resp and resp.get("fatal_connection"):
-                bad_id = conta_escolhida["id"]
-                inst_name = conta_escolhida.get("instance_name", bad_id)
-                circuit_breaker_triggered = True
-                circuit_breaker_reason = f"Instância {inst_name} desconectou ou recusou envio ({resp.get('error')}). Lote interrompido por segurança Anti-Ban."
-                logger.warning(f"[CIRCUIT-BREAKER] {circuit_breaker_reason}")
-                contas_aptas = [c for c in contas_aptas if c["id"] != bad_id]
-                if not contas_aptas:
-                    break
+                    try:
+                        lead = fila_leads.get_nowait()
+                    except queue.Empty:
+                        with CAMPAIGN_STATE_LOCK:
+                            CAMPAIGN_STATUS["attempts"] = max(0, CAMPAIGN_STATUS["attempts"] - 1)
+                        break
 
-            # Respeita SEMPRE o intervalo completo de Jitter Anti-Ban
-            if sent < limit and attempts < limit and contas_aptas and not STOP_CAMPANHA_FLAG:
-                espera = 0.04 if dry_run else random.uniform(min_delay, max_delay)
-                time.sleep(espera)
+                    conta_escolhida = None
+                    for _ in range(len(local_chips)):
+                        candidata = local_chips[rr_local % len(local_chips)]
+                        rr_local += 1
+                        if int(candidata.get("enviados_hoje", 0)) < calcular_limite_efetivo_chip(candidata):
+                            conta_escolhida = candidata
+                            break
 
+                    if not conta_escolhida:
+                        fila_leads.put(lead)
+                        with CAMPAIGN_STATE_LOCK:
+                            CAMPAIGN_STATUS["attempts"] = max(0, CAMPAIGN_STATUS["attempts"] - 1)
+                        break
+
+                    tel = lead["telefone"]
+                    resp = send_whatsapp_message(
+                        tel,
+                        custom_msg,
+                        dry_run=dry_run,
+                        force_outside_hours=force_hours,
+                        account=conta_escolhida,
+                        lead_name=lead.get("nome", ""),
+                    )
+
+                    if resp and resp.get("error") in ("ja_enviado_historico", "ja_conversado_no_chip"):
+                        atualizar_lead_pos_disparo(tel, conta_escolhida["id"], status_novo="enviado")
+                        with CAMPAIGN_STATE_LOCK:
+                            CAMPAIGN_STATUS["ja_conversado"] += 1
+                            if reservado:
+                                CAMPAIGN_STATUS["attempts"] = max(0, CAMPAIGN_STATUS["attempts"] - 1)
+                        continue
+
+                    if resp and "messages" in resp:
+                        cid = conta_escolhida["id"]
+                        inst_name = conta_escolhida.get("instance_name", cid)
+                        msg_id = resp["messages"][0].get("id", "")
+                        conta_escolhida["enviados_hoje"] = int(conta_escolhida.get("enviados_hoje", 0)) + 1
+                        envios_worker += 1
+                        registrar_disparo_conta(cid)
+                        atualizar_lead_pos_disparo(tel, cid, message_id=msg_id, status_novo="enviado")
+                        log_event(
+                            "campaign_sent",
+                            tel,
+                            {
+                                "account_id": cid,
+                                "instance_name": inst_name,
+                                "device": dev_name,
+                                "account_name": conta_escolhida.get("nome", cid),
+                                "dry_run": dry_run,
+                                "message_id": msg_id,
+                            },
+                        )
+                        with CAMPAIGN_STATE_LOCK:
+                            CAMPAIGN_STATUS["sent"] += 1
+                            CAMPAIGN_STATUS["per_account"][cid] = CAMPAIGN_STATUS["per_account"].get(cid, 0) + 1
+                    elif resp and resp.get("error") == "sem_whatsapp":
+                        atualizar_lead_pos_disparo(tel, conta_escolhida["id"], status_novo="sem_whatsapp")
+                        with CAMPAIGN_STATE_LOCK:
+                            CAMPAIGN_STATUS["sem_whatsapp"] += 1
+                    elif resp and resp.get("fatal_connection"):
+                        bad_id = conta_escolhida["id"]
+                        inst_name = conta_escolhida.get("instance_name", bad_id)
+                        motivo_cb = f"Instância {inst_name} ({dev_name}) desconectou/recusou ({resp.get('error')})."
+                        logger.warning(f"[CIRCUIT-BREAKER] {motivo_cb}")
+                        local_chips = [c for c in local_chips if c["id"] != bad_id]
+                        with CAMPAIGN_STATE_LOCK:
+                            CAMPAIGN_STATUS["circuit_breaker"] = True
+                            CAMPAIGN_STATUS["circuit_breaker_reason"] = motivo_cb
+
+                    with CAMPAIGN_STATE_LOCK:
+                        terminou = CAMPAIGN_STATUS["sent"] >= limit or CAMPAIGN_STATUS["attempts"] >= limit
+                    if terminou or not local_chips or STOP_CAMPANHA_FLAG or fila_leads.empty():
+                        break
+
+                    if not dry_run and envios_worker > 0 and envios_worker % 10 == 0:
+                        espera = random.uniform(35.0, 60.0)
+                        logger.info(f"[ANTI-BAN BATCH COOLING · {dev_name}] Pausa de {espera:.1f}s após {envios_worker} envios.")
+                    else:
+                        espera = 0.05 if dry_run else random.uniform(min_delay, max_delay)
+                    time.sleep(espera)
+            finally:
+                with CAMPAIGN_STATE_LOCK:
+                    CAMPAIGN_STATUS["workers_active"] = max(0, CAMPAIGN_STATUS["workers_active"] - 1)
+
+        def _coordenador_campanha() -> None:
+            threads = []
+            try:
+                for dev_name, chips_g in grupos_dispositivo.items():
+                    t = threading.Thread(target=_worker_dispositivo, args=(dev_name, chips_g), daemon=True)
+                    t.start()
+                    threads.append(t)
+                for t in threads:
+                    t.join()
+            finally:
+                with CAMPAIGN_STATE_LOCK:
+                    CAMPAIGN_STATUS["running"] = False
+                    CAMPAIGN_STATUS["workers_active"] = 0
+                    CAMPAIGN_STATUS["finished_at"] = datetime.now().isoformat()
+                    if STOP_CAMPANHA_FLAG:
+                        CAMPAIGN_STATUS["circuit_breaker"] = True
+                        CAMPAIGN_STATUS["circuit_breaker_reason"] = "Disparo interrompido manualmente pelo usuário."
+                CAMPANHA_LOCK.release()
+
+        threading.Thread(target=_coordenador_campanha, daemon=True).start()
         return jsonify({
             "ok": True,
+            "started": True,
             "mode": "DRY-RUN" if dry_run else "EVOLUTION-LIVE",
-            "sent": sent,
-            "attempts": attempts,
-            "ja_conversado": ja_conversado_count,
-            "sem_whatsapp": sem_whatsapp_count,
-            "circuit_breaker": circuit_breaker_triggered,
-            "circuit_breaker_reason": circuit_breaker_reason,
-            "per_account": por_conta,
-            "skipped_sent": skipped_sent,
-            "skipped_opt_out": skipped_opt_out,
-        }), 200
+            "workers": len(grupos_dispositivo),
+            "devices": list(grupos_dispositivo.keys()),
+            "target": limit,
+        }), 202
     except Exception as e:
         logger.error(f"Erro em /api/campanha/disparar: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
-    finally:
         CAMPANHA_LOCK.release()
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/api/webhook/simular", methods=["POST"])
@@ -1869,13 +2112,85 @@ def api_salvar_config():
 
     for k, v in body.items():
         val = str(v or "").strip()
-        if val:
+        if val and not val.startswith("****"):
             atuais[k] = val
             os.environ[k] = val
 
     linhas = [f"{k}={v}" for k, v in atuais.items()]
     env_path.write_text("\n".join(linhas) + "\n", encoding="utf-8")
     return jsonify({"ok": True}), 200
+
+
+@app.route("/api/leads/responder", methods=["POST"])
+def api_responder_lead_manual():
+    """Envia resposta personalizada (ou sugestão escolhida) para uma dúvida aberta pelo mesmo chip de origem."""
+    try:
+        body = request.get_json(silent=True) or {}
+        lead_id = str(body.get("id") or "").strip()
+        phone = normalize_phone(str(body.get("phone") or ""))
+        text = str(body.get("message") or "").strip()
+        new_status = str(body.get("new_status") or "").strip().lower()
+        conta_id_req = str(body.get("conta_id") or "").strip()
+
+        if not phone or not text:
+            return jsonify({"ok": False, "error": "Informe telefone e mensagem."}), 400
+
+        conta_envio = resolver_conta_whatsapp(conta_id_req) if conta_id_req and conta_id_req != "conta_admin" else resolver_conta_whatsapp()
+        if conta_envio.get("admin_only") or conta_envio.get("id") == "conta_admin":
+            ativas = get_active_accounts("todas_ativas", dry_run=False)
+            if ativas:
+                conta_envio = ativas[0]
+            else:
+                prosp = [c for c in load_whatsapp_accounts() if not c.get("admin_only") and c.get("id") != "conta_admin"]
+                if prosp:
+                    conta_envio = prosp[0]
+
+        inst_used = conta_envio.get("instance_name") or conta_envio.get("id", "")
+        res = send_whatsapp_text(phone, text, account=conta_envio)
+        if res is None:
+            return jsonify({"ok": False, "error": f"Falha ao enviar via instância {inst_used}. Verifique se o chip está 🟢 CONECTADO."}), 502
+
+        if lead_id and os.path.exists(LEADS_CSV):
+            with CSV_LOCK:
+                rows = []
+                with open(LEADS_CSV, "r", encoding="utf-8", errors="replace") as f:
+                    rd = csv.DictReader(f)
+                    fn = [c for c in (rd.fieldnames or COLUNAS_PADRAO) if c is not None]
+                    for r in rd:
+                        r.pop(None, None)
+                        if str(r.get("id")) == lead_id or phones_match(r.get("telefone", ""), phone):
+                            if new_status in ("interessado", "respondeu", "opt_out", "enviado"):
+                                r["status"] = new_status
+                                r["opt_out"] = "true" if new_status == "opt_out" else "false"
+                            r["ultima_interacao_em"] = datetime.now().isoformat()
+                        rows.append(r)
+                salvar_leads_csv(rows, fn, allow_downgrade=True)
+
+        log_event(
+            "manual_reply_sent",
+            phone,
+            {
+                "lead_id": lead_id,
+                "account_id": conta_envio.get("id"),
+                "instance_name": inst_used,
+                "text": text,
+                "new_status": new_status or "sem_alteracao",
+            },
+        )
+        return jsonify({"ok": True, "instance_name": inst_used}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/evolution/warmup_ping", methods=["POST"])
+def api_evolution_warmup_ping():
+    """Executa 1 troca de mensagem orgânica entre 2 chips conectados (Aquecimento Cruzado Anti-Ban)."""
+    contas = load_whatsapp_accounts()
+    res = executar_aquecimento_cruzado(contas)
+    if res.get("ok"):
+        log_event("warmup_ping", res.get("to_phone", ""), res)
+        return jsonify(res), 200
+    return jsonify(res), 400
 
 
 @app.route("/health", methods=["GET"])
