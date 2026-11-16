@@ -1,0 +1,11 @@
+id,nome,telefone,status,opt_out,conta_id,message_id,ultima_interacao_em,ultima_resposta
+1,Empresa Demonstração #1 (CNPJ Ativo),5511900000001,interessado,false,conta_1,demo_msg_001,2026-11-16T10:15:00,1
+2,Comércio Exemplo Ltda #2,5511900000002,respondeu,false,conta_2,demo_msg_002,2026-11-16T10:18:00,"Tenho 12 funcionários no CNPJ, qual a carência?"
+3,Indústria Modelo S/A #3,5511900000003,enviado,false,conta_1,demo_msg_003,2026-11-16T10:20:00,
+4,Clínica Saúde Integrada #4 (Exemplo),5511900000004,novo,false,,,,
+5,Contabilidade Horizonte #5 (Exemplo),5511900000005,novo,false,,,,
+6,Padaria Pão Dourado #6 (Exemplo),5511900000006,novo,false,,,,
+7,Transportadora Rápida #7 (Exemplo),5511900000007,novo,false,,,,
+8,Oficina Mecânica Central #8 (Exemplo),5511900000008,novo,false,,,,
+9,Construtora Alvorada #9 (Exemplo),5511900000009,novo,false,,,,
+10,Consultoria Empresarial #10 (Exemplo),5511900000010,opt_out,true,conta_3,demo_msg_010,2026-11-16T10:25:00,2

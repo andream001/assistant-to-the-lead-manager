@@ -1,0 +1,19 @@
+# Arquivos sensiveis e credenciais locais (LGPD / DLP)
+.env
+.env.local
+data/leads.local.csv
+data/leads_real*.csv
+data/historico_enviados_permanente.txt
+data/events.log
+data/whatsapp_accounts.json
+*.tmp
+
+# Cache Python e sistema
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.DS_Store
+Thumbs.db
+.githooks/
