@@ -14,6 +14,7 @@ import json
 import os
 import random
 import re
+import threading
 import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
@@ -22,6 +23,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+CSV_LOCK = threading.RLock()
 MAX_WHATSAPP_ACCOUNTS = 50
 
 # Configuração Global da Evolution API
@@ -45,6 +47,7 @@ _default_leads_rel = "data/leads.local.csv" if os.path.exists(os.path.join(BASE_
 LEADS_FILE = os.path.join(BASE_DIR, os.getenv("LEADS_FILE", _default_leads_rel))
 ACCOUNTS_FILE = os.path.join(BASE_DIR, os.getenv("ACCOUNTS_FILE", "data/whatsapp_accounts.json"))
 HISTORICO_ENVIADOS_FILE = os.path.join(BASE_DIR, "data/historico_enviados_permanente.txt")
+ENCAMINHAMENTOS_FILE = os.path.join(BASE_DIR, "data/encaminhamentos_permanente.jsonl")
 RESTRICTIONS_LOG_FILE = os.path.join(BASE_DIR, "data/restrictions_errors.log")
 ROUTING_CONFIG_FILE = os.path.join(BASE_DIR, "data/routing_config.json")
 
@@ -68,6 +71,8 @@ COLUNAS_PADRAO = [
     "message_id",
     "ultima_interacao_em",
     "ultima_resposta",
+    "encaminhado_para",
+    "encaminhado_em",
 ]
 
 SAUDACOES_VARIADAS = [
@@ -304,6 +309,8 @@ def load_routing_config() -> Dict:
         "usar_conta_admin_para_alertas": True,
         "notificar_restricoes_no_admin": True,
         "som_notificacao_ativo": True,
+        "enviar_msg_opt_out_manual": True,
+        "mensagem_opt_out": "Entendido! Agradecemos o retorno e não enviaremos mais mensagens por aqui. Tenha um ótimo dia!",
         "consultor_padrao": normalize_phone(os.getenv("CONSULTANT_PHONE_NUMBER", "")),
         "fila_consultores": [
             {"nome": "Consultor Principal", "telefone": normalize_phone(os.getenv("CONSULTANT_PHONE_NUMBER", "")), "ativo": True, "recebidos": 0}
@@ -964,19 +971,280 @@ def send_whatsapp_message(
         }
 
 
-def salvar_leads_csv(leads: List[Dict], fieldnames: List[str]) -> None:
-    """Salva a lista completa de leads de forma segura garantindo todas as colunas necessárias."""
-    colunas_finais = list(fieldnames)
-    for col in COLUNAS_PADRAO:
-        if col not in colunas_finais:
-            colunas_finais.append(col)
+STATUS_PRIORITY = {
+    "novo": 0,
+    "pendente": 0,
+    "": 0,
+    "sem_whatsapp": 1,
+    "erro": 1,
+    "enviado": 2,
+    "respondeu": 3,
+    "interessado": 4,
+    "opt_out": 5,
+}
 
-    arquivo_temp = f"{LEADS_FILE}.tmp"
-    with open(arquivo_temp, mode="w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=colunas_finais, extrasaction="ignore")
-        writer.writeheader()
-        writer.writerows(leads)
-    os.replace(arquivo_temp, LEADS_FILE)
+
+def salvar_leads_csv(leads: List[Dict], fieldnames: List[str], allow_downgrade: bool = False) -> None:
+    """
+    Salva a lista completa de leads de forma atômica e segura contra condições de corrida (Race Condition):
+    - Sob proteção de CSV_LOCK, verifica o estado atual no disco antes de gravar e NUNCA rebaixa um lead
+      que já tenha respondido via Webhook ('interessado', 'respondeu', 'opt_out') de volta para 'enviado' ou 'novo',
+      a menos que allow_downgrade=True (edição manual explícita pelo usuário).
+    """
+    with CSV_LOCK:
+        colunas_finais = list(fieldnames)
+        for col in COLUNAS_PADRAO:
+            if col not in colunas_finais:
+                colunas_finais.append(col)
+
+        if not allow_downgrade and os.path.exists(LEADS_FILE):
+            try:
+                atuais_por_chave: Dict[str, Dict] = {}
+                with open(LEADS_FILE, mode="r", encoding="utf-8", errors="replace") as f_cur:
+                    for r_cur in csv.DictReader(f_cur):
+                        r_cur.pop(None, None)
+                        k = phone_dedup_key(r_cur.get("telefone", ""))
+                        if k:
+                            atuais_por_chave[k] = r_cur
+                for row in leads:
+                    k = phone_dedup_key(row.get("telefone", ""))
+                    row_disco = atuais_por_chave.get(k) if k else None
+                    if not row_disco:
+                        continue
+                    st_mem = str(row.get("status", "novo")).strip().lower()
+                    st_dsk = str(row_disco.get("status", "novo")).strip().lower()
+                    if STATUS_PRIORITY.get(st_dsk, 0) > STATUS_PRIORITY.get(st_mem, 0):
+                        row["status"] = row_disco.get("status", st_dsk)
+                        if row_disco.get("opt_out") == "true":
+                            row["opt_out"] = "true"
+                    if row_disco.get("ultima_resposta") and not row.get("ultima_resposta"):
+                        row["ultima_resposta"] = row_disco["ultima_resposta"]
+                    if row_disco.get("nome") and not str(row_disco.get("nome")).startswith("Lead ") and str(row.get("nome", "")).startswith("Lead "):
+                        row["nome"] = row_disco["nome"]
+                    if row_disco.get("ultima_interacao_em", "") > str(row.get("ultima_interacao_em", "")):
+                        row["ultima_interacao_em"] = row_disco["ultima_interacao_em"]
+                    if row_disco.get("conta_id") and st_dsk in ("interessado", "respondeu", "opt_out"):
+                        row["conta_id"] = row_disco["conta_id"]
+            except Exception:
+                pass
+
+        arquivo_temp = f"{LEADS_FILE}.tmp"
+        with open(arquivo_temp, mode="w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=colunas_finais, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(leads)
+        os.replace(arquivo_temp, LEADS_FILE)
+
+
+def atualizar_lead_pos_disparo(
+    telefone: str,
+    conta_id: str,
+    message_id: str = "",
+    status_novo: str = "enviado",
+) -> bool:
+    """
+    Atualiza cirurgicamente apenas a linha do lead disparado lendo o CSV fresco do disco sob CSV_LOCK,
+    impedindo que um disparo em lote sobrescreva respostas de Webhook recebidas durante o intervalo Anti-Ban.
+    """
+    with CSV_LOCK:
+        if not os.path.exists(LEADS_FILE):
+            return False
+        leads = []
+        updated = False
+        tel_norm = normalize_phone(telefone)
+        with open(LEADS_FILE, mode="r", encoding="utf-8", errors="replace") as f:
+            reader = csv.DictReader(f)
+            fieldnames = list(reader.fieldnames or COLUNAS_PADRAO)
+            for row in reader:
+                row.pop(None, None)
+                if phones_match(row.get("telefone", ""), tel_norm):
+                    st_atual = str(row.get("status", "novo")).strip().lower()
+                    if STATUS_PRIORITY.get(status_novo, 2) >= STATUS_PRIORITY.get(st_atual, 0):
+                        row["status"] = status_novo
+                    if conta_id:
+                        row["conta_id"] = conta_id
+                    if message_id:
+                        row["message_id"] = message_id
+                    row["ultima_interacao_em"] = datetime.now().isoformat()
+                    updated = True
+                leads.append(row)
+        if updated:
+            salvar_leads_csv(leads, fieldnames, allow_downgrade=False)
+        return updated
+
+
+def reconciliar_eventos_no_csv(events_log_path: Optional[str] = None) -> int:
+    """
+    Reconcilia o arquivo de auditoria data/events.log com o CSV de leads, restaurando automaticamente
+    qualquer resposta ('interessado', 'respondeu', 'opt_out') ou envio que tenha sido sobrescrito.
+    """
+    caminho_log = events_log_path or os.path.join(BASE_DIR, "data/events.log")
+    if not os.path.exists(caminho_log) or not os.path.exists(LEADS_FILE):
+        return 0
+
+    with CSV_LOCK:
+        eventos_por_chave: Dict[str, Dict] = {}
+        try:
+            with open(caminho_log, mode="r", encoding="utf-8", errors="replace") as fl:
+                for line in fl:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        ev = json.loads(line)
+                    except Exception:
+                        continue
+                    ev_type = ev.get("type", "")
+                    phone = normalize_phone(ev.get("phone", ""))
+                    if not phone:
+                        continue
+                    k = phone_dedup_key(phone)
+                    payload = ev.get("payload") or {}
+                    ts = ev.get("timestamp", "")
+                    atual = eventos_por_chave.get(k, {
+                        "phone": phone,
+                        "status": "novo",
+                        "ultima_resposta": "",
+                        "profile_name": "",
+                        "conta_id": "",
+                        "message_id": "",
+                        "timestamp": "",
+                    })
+                    if ev_type == "campaign_sent":
+                        if STATUS_PRIORITY.get("enviado", 2) > STATUS_PRIORITY.get(atual["status"], 0):
+                            atual["status"] = "enviado"
+                        if payload.get("account_id"):
+                            atual["conta_id"] = payload["account_id"]
+                        if payload.get("message_id"):
+                            atual["message_id"] = payload["message_id"]
+                        if ts > atual["timestamp"]:
+                            atual["timestamp"] = ts
+                    elif ev_type == "message_received":
+                        new_st = str(payload.get("new_status", "respondeu")).strip().lower()
+                        if STATUS_PRIORITY.get(new_st, 3) >= STATUS_PRIORITY.get(atual["status"], 0):
+                            atual["status"] = new_st
+                        if payload.get("text"):
+                            atual["ultima_resposta"] = str(payload["text"])
+                        if payload.get("profile_name"):
+                            atual["profile_name"] = str(payload["profile_name"])
+                        if payload.get("account_id"):
+                            atual["conta_id"] = str(payload["account_id"])
+                        if ts > atual["timestamp"]:
+                            atual["timestamp"] = ts
+                    elif ev_type == "manual_status_change":
+                        new_st = str(payload.get("new_status", "")).strip().lower()
+                        if new_st:
+                            atual["status"] = new_st
+                        if ts > atual["timestamp"]:
+                            atual["timestamp"] = ts
+                    elif ev_type == "lead_forwarded":
+                        cons_nome = str(payload.get("consultant_name") or payload.get("consultant_phone") or "").strip()
+                        if cons_nome:
+                            atual["encaminhado_para"] = cons_nome
+                            atual["encaminhado_em"] = ts
+                    eventos_por_chave[k] = atual
+        except Exception:
+            return 0
+
+        if not eventos_por_chave:
+            return 0
+
+        leads = []
+        restaurados = 0
+        chaves_enviadas: set = set()
+        with open(LEADS_FILE, mode="r", encoding="utf-8", errors="replace") as fc:
+            reader = csv.DictReader(fc)
+            fieldnames = list(reader.fieldnames or COLUNAS_PADRAO)
+            for row in reader:
+                row.pop(None, None)
+                tel = normalize_phone(row.get("telefone", ""))
+                row["telefone"] = tel
+                k = phone_dedup_key(tel)
+                ev_info = eventos_por_chave.get(k)
+                if ev_info:
+                    st_csv = str(row.get("status", "novo")).strip().lower()
+                    st_ev = ev_info["status"]
+                    mudou = False
+                    if STATUS_PRIORITY.get(st_ev, 0) > STATUS_PRIORITY.get(st_csv, 0):
+                        row["status"] = st_ev
+                        if st_ev == "opt_out":
+                            row["opt_out"] = "true"
+                        mudou = True
+                    if ev_info["ultima_resposta"] and row.get("ultima_resposta") != ev_info["ultima_resposta"]:
+                        row["ultima_resposta"] = ev_info["ultima_resposta"]
+                        mudou = True
+                    if ev_info["profile_name"] and (not row.get("nome") or str(row.get("nome", "")).startswith("Lead ")):
+                        row["nome"] = ev_info["profile_name"]
+                        mudou = True
+                    if ev_info["conta_id"] and (not row.get("conta_id") or st_ev in ("interessado", "respondeu", "opt_out")):
+                        row["conta_id"] = ev_info["conta_id"]
+                        mudou = True
+                    if ev_info.get("encaminhado_para") and not row.get("encaminhado_para"):
+                        row["encaminhado_para"] = ev_info["encaminhado_para"]
+                        row["encaminhado_em"] = ev_info.get("encaminhado_em", "")
+                        mudou = True
+                    if ev_info["timestamp"] and ev_info["timestamp"] > str(row.get("ultima_interacao_em", "")):
+                        row["ultima_interacao_em"] = ev_info["timestamp"]
+                    if mudou:
+                        restaurados += 1
+                st_final = str(row.get("status", "novo")).strip().lower()
+                if tel and st_final in ("enviado", "interessado", "respondeu", "opt_out"):
+                    chaves_enviadas.add(phone_dedup_key(tel))
+                leads.append(row)
+
+        if restaurados > 0:
+            salvar_leads_csv(leads, fieldnames, allow_downgrade=True)
+
+        # Garante que o Cofre Permanente Anti-Reenvio contenha 100% dos números já abordados
+        try:
+            existentes = carregar_historico_permanente()
+            for k_ev, ev_inf in eventos_por_chave.items():
+                if ev_inf.get("status") in ("enviado", "interessado", "respondeu", "opt_out"):
+                    chaves_enviadas.add(k_ev)
+            faltantes = chaves_enviadas - existentes
+            if faltantes:
+                os.makedirs(os.path.dirname(HISTORICO_ENVIADOS_FILE) or ".", exist_ok=True)
+                with open(HISTORICO_ENVIADOS_FILE, "a", encoding="utf-8") as fh:
+                    for fk in sorted(faltantes):
+                        if fk:
+                            fh.write(f"{fk}\n")
+        except Exception:
+            pass
+
+        return restaurados
+
+
+def registrar_encaminhamento_permanente(registro: Dict) -> None:
+    """Grava cada encaminhamento (automático ou manual) no histórico permanente JSONL."""
+    try:
+        os.makedirs(os.path.dirname(ENCAMINHAMENTOS_FILE) or ".", exist_ok=True)
+        item = dict(registro)
+        item.setdefault("timestamp", datetime.now().isoformat())
+        with CSV_LOCK:
+            with open(ENCAMINHAMENTOS_FILE, "a", encoding="utf-8") as f:
+                f.write(json.dumps(item, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def ler_encaminhamentos_permanente(limit: int = 100) -> List[Dict]:
+    """Lê os últimos encaminhamentos salvos em data/encaminhamentos_permanente.jsonl."""
+    if not os.path.exists(ENCAMINHAMENTOS_FILE):
+        return []
+    saida: List[Dict] = []
+    try:
+        with open(ENCAMINHAMENTOS_FILE, "r", encoding="utf-8", errors="replace") as f:
+            linhas = f.readlines()[-limit:]
+            for ln in reversed(linhas):
+                ln = ln.strip()
+                if ln:
+                    try:
+                        saida.append(json.loads(ln))
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+    return saida
 
 
 def update_lead_status(

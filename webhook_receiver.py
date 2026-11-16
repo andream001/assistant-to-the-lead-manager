@@ -26,11 +26,13 @@ from dotenv import load_dotenv
 
 from send_campaigns import (
     COLUNAS_PADRAO,
+    CSV_LOCK,
     EVOLUTION_API_KEY,
     EVOLUTION_API_URL,
     MAX_WHATSAPP_ACCOUNTS,
     MENSAGEM_PADRAO_PROSPECCAO,
     aplicar_quarentena_conta,
+    atualizar_lead_pos_disparo,
     conta_em_quarentena,
     escolher_consultor_destino,
     evolution_check_connection,
@@ -39,11 +41,15 @@ from send_campaigns import (
     get_active_accounts,
     get_admin_account,
     is_business_hours,
+    ler_encaminhamentos_permanente,
     ler_logs_restricao,
     limpar_quarentena_conta,
     load_routing_config,
     load_whatsapp_accounts,
+    reconciliar_eventos_no_csv,
     registrar_disparo_conta,
+    registrar_encaminhamento_permanente,
+    registrar_historico_permanente,
     resolver_conta_whatsapp,
     salvar_leads_csv,
     save_routing_config,
@@ -186,66 +192,72 @@ def update_lead_status(
     response_text: Optional[str] = None,
     profile_name: Optional[str] = None,
     conta_id: Optional[str] = None,
+    encaminhado_para: Optional[str] = None,
 ) -> bool:
-    """Atualiza status, conta_id, resposta e timestamp do lead no CSV de forma atômica."""
+    """Atualiza status, conta_id, resposta e timestamp do lead no CSV de forma atômica sob CSV_LOCK."""
     try:
-        leads: List[Dict] = []
-        updated = False
-        fieldnames: List[str] = list(COLUNAS_PADRAO)
+        with CSV_LOCK:
+            leads: List[Dict] = []
+            updated = False
+            fieldnames: List[str] = list(COLUNAS_PADRAO)
 
-        if os.path.exists(LEADS_CSV):
-            with open(LEADS_CSV, "r", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                if reader.fieldnames:
-                    fieldnames = list(reader.fieldnames)
-                for col in COLUNAS_PADRAO:
-                    if col not in fieldnames:
-                        fieldnames.append(col)
+            if os.path.exists(LEADS_CSV):
+                with open(LEADS_CSV, "r", encoding="utf-8", errors="replace") as f:
+                    reader = csv.DictReader(f)
+                    if reader.fieldnames:
+                        fieldnames = [fn for fn in reader.fieldnames if fn is not None]
+                    for col in COLUNAS_PADRAO:
+                        if col not in fieldnames:
+                            fieldnames.append(col)
 
-                for row in reader:
-                    row["telefone"] = normalize_phone(row.get("telefone", ""))
-                    if phones_match(row.get("telefone", ""), phone_number):
-                        row["status"] = status
-                        if response_text is not None:
-                            row["ultima_resposta"] = response_text
-                        if profile_name and (not row.get("nome") or row.get("nome", "").startswith("Lead ")):
-                            row["nome"] = profile_name
-                        if conta_id:
-                            row["conta_id"] = conta_id
-                        row["ultima_interacao_em"] = datetime.now().isoformat()
+                    for row in reader:
+                        row.pop(None, None)
+                        row["telefone"] = normalize_phone(row.get("telefone", ""))
+                        if phones_match(row.get("telefone", ""), phone_number):
+                            row["status"] = status
+                            if response_text is not None:
+                                row["ultima_resposta"] = response_text
+                            if profile_name and (not row.get("nome") or row.get("nome", "").startswith("Lead ")):
+                                row["nome"] = profile_name
+                            if conta_id:
+                                row["conta_id"] = conta_id
+                            if encaminhado_para:
+                                row["encaminhado_para"] = encaminhado_para
+                                row["encaminhado_em"] = datetime.now().isoformat()
+                            row["ultima_interacao_em"] = datetime.now().isoformat()
 
-                        if status == "opt_out":
-                            row["opt_out"] = "true"
-                        updated = True
+                            if status == "opt_out":
+                                row["opt_out"] = "true"
+                            updated = True
 
-                    leads.append(row)
+                        leads.append(row)
 
-        if not updated and os.path.exists(LEADS_CSV):
-            novo_id = str(len(leads) + 1)
-            leads.append({
-                "id": novo_id,
-                "nome": profile_name or f"Contato {novo_id}",
-                "telefone": normalize_phone(phone_number),
-                "status": status,
-                "opt_out": "true" if status == "opt_out" else "false",
-                "conta_id": conta_id or "conta_1",
-                "message_id": "",
-                "ultima_interacao_em": datetime.now().isoformat(),
-                "ultima_resposta": response_text or "",
-            })
-            updated = True
+            if not updated and os.path.exists(LEADS_CSV):
+                novo_id = str(len(leads) + 1)
+                leads.append({
+                    "id": novo_id,
+                    "nome": profile_name or f"Contato {novo_id}",
+                    "telefone": normalize_phone(phone_number),
+                    "status": status,
+                    "opt_out": "true" if status == "opt_out" else "false",
+                    "conta_id": conta_id or "conta_1",
+                    "message_id": "",
+                    "ultima_interacao_em": datetime.now().isoformat(),
+                    "ultima_resposta": response_text or "",
+                })
+                updated = True
 
-        if updated:
-            os.makedirs(os.path.dirname(LEADS_CSV) or ".", exist_ok=True)
-            arquivo_temp = f"{LEADS_CSV}.tmp"
-            with open(arquivo_temp, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
-                writer.writeheader()
-                writer.writerows(leads)
-            os.replace(arquivo_temp, LEADS_CSV)
-            logger.info(f"Lead {normalize_phone(phone_number)} atualizado para status: {status} ({conta_id or 'conta_1'})")
+            if updated:
+                os.makedirs(os.path.dirname(LEADS_CSV) or ".", exist_ok=True)
+                arquivo_temp = f"{LEADS_CSV}.tmp"
+                with open(arquivo_temp, "w", newline="", encoding="utf-8") as f:
+                    writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+                    writer.writeheader()
+                    writer.writerows(leads)
+                os.replace(arquivo_temp, LEADS_CSV)
+                logger.info(f"Lead {normalize_phone(phone_number)} atualizado para status: {status} ({conta_id or 'conta_1'})")
 
-        return updated
+            return updated
 
     except Exception as e:
         logger.error(f"Erro ao atualizar lead {phone_number}: {e}")
@@ -314,6 +326,13 @@ def process_message(
     nome_exibicao = profile_name or (lead_existente or {}).get("nome") or "Cliente"
 
     conta = descobrir_conta_do_lead(phone_norm, incoming_account_ref)
+    if not from_simulator and (
+        conta.get("admin_only")
+        or conta.get("id") == "conta_admin"
+        or str(incoming_account_ref or "").strip().lower() in ("conta_admin", "chip_admin")
+    ):
+        logger.info(f"[PROTEÇÃO ADMIN] Mensagem recebida na Conta Principal Administradora ({phone_norm}). Ignorando triagem de prospecção.")
+        return "ignorado_conta_admin"
     conta_id = conta.get("id", "conta_1")
     conta_nome = conta.get("nome", conta_id)
     instance_name = conta.get("instance_name") or f"chip_{conta.get('slot', 1)}"
@@ -330,6 +349,7 @@ def process_message(
         if str(admin_acc.get("connection_status", "")).lower() == "open":
             conta_notificadora = admin_acc
 
+    encaminhado_nome_final = ""
     if texto_limpo in ("1", "1️⃣"):
         status = "interessado"
         logger.info(f"[{instance_name}] Lead {phone_norm} ({nome_exibicao}) marcado como INTERESSADO")
@@ -346,13 +366,24 @@ def process_message(
                     f"📱 *Telefone:* {phone_norm}\n\n"
                     f"🔗 *Conversar agora:* {wa_link}"
                 )
-                send_whatsapp_text(consultor_destino, notification_msg, account=conta_notificadora)
+                res_fw = send_whatsapp_text(consultor_destino, notification_msg, account=conta_notificadora)
+                encaminhado_nome_final = consultor_nome
+                registrar_encaminhamento_permanente({
+                    "tipo": "automatico_opcao_1",
+                    "lead_phone": phone_norm,
+                    "lead_name": nome_exibicao,
+                    "chip_origem": instance_name,
+                    "consultant_name": consultor_nome,
+                    "consultant_phone": consultor_destino,
+                    "sent_via_api": bool(res_fw),
+                })
 
     elif texto_limpo in ("2", "2️⃣", "sair", "parar", "nao", "não"):
         status = "opt_out"
         logger.info(f"[{instance_name}] Lead {phone_norm} solicitou OPT-OUT")
         if status_anterior != "opt_out" or from_simulator:
-            send_whatsapp_text(phone_norm, RESPOSTA_OPT_OUT, account=conta)
+            msg_despedida = str(routing_cfg.get("mensagem_opt_out") or RESPOSTA_OPT_OUT).replace("{nome}", nome_exibicao)
+            send_whatsapp_text(phone_norm, msg_despedida, account=conta)
 
     else:
         status = "interessado" if status_anterior == "interessado" else "respondeu"
@@ -372,7 +403,17 @@ def process_message(
                     f"📝 *Mensagem:* \"{texto_limpo}\"\n\n"
                     f"🔗 *Atender agora:* {wa_link}"
                 )
-                send_whatsapp_text(consultor_destino, notification_msg, account=conta_notificadora)
+                res_fw = send_whatsapp_text(consultor_destino, notification_msg, account=conta_notificadora)
+                encaminhado_nome_final = consultor_nome
+                registrar_encaminhamento_permanente({
+                    "tipo": "automatico_duvida",
+                    "lead_phone": phone_norm,
+                    "lead_name": nome_exibicao,
+                    "chip_origem": instance_name,
+                    "consultant_name": consultor_nome,
+                    "consultant_phone": consultor_destino,
+                    "sent_via_api": bool(res_fw),
+                })
 
     # Dispara também para Webhook CRM externo caso configurado
     crm_url = str(routing_cfg.get("webhook_crm_url") or "").strip()
@@ -396,7 +437,14 @@ def process_message(
         except Exception:
             pass
 
-    update_lead_status(phone_norm, status, texto_limpo, profile_name, conta_id=conta_id)
+    update_lead_status(
+        phone_norm,
+        status,
+        texto_limpo,
+        profile_name,
+        conta_id=conta_id,
+        encaminhado_para=encaminhado_nome_final or None,
+    )
 
     log_event(
         "message_received",
@@ -674,6 +722,9 @@ def api_dashboard():
                             continue
                     filtered.append(row)
 
+        if status_filter in ("interessado", "respondeu", "opt_out", "enviado"):
+            filtered.sort(key=lambda r: str(r.get("ultima_interacao_em", "")), reverse=True)
+
         total_filtered = len(filtered)
         total_pages = max(1, math.ceil(total_filtered / per_page))
         start = (page - 1) * per_page
@@ -700,6 +751,7 @@ def api_dashboard():
         capacidade_diaria_total = sum(c["daily_limit"] for c in prospeccao_ui if c["ativo"])
 
         restrictions_log = ler_logs_restricao(30)
+        forwards_log = ler_encaminhamentos_permanente(60)
         routing_cfg = load_routing_config()
 
         config_info = {
@@ -726,6 +778,7 @@ def api_dashboard():
             "admin_account": admin_ui,
             "accounts": prospeccao_ui,
             "restrictions": restrictions_log,
+            "forwards": forwards_log,
             "routing": routing_cfg,
             "leads": paginated,
             "filtered_total": total_filtered,
@@ -888,6 +941,10 @@ def api_routing():
             cfg["notificar_restricoes_no_admin"] = bool(body["notificar_restricoes_no_admin"])
         if "som_notificacao_ativo" in body:
             cfg["som_notificacao_ativo"] = bool(body["som_notificacao_ativo"])
+        if "enviar_msg_opt_out_manual" in body:
+            cfg["enviar_msg_opt_out_manual"] = bool(body["enviar_msg_opt_out_manual"])
+        if "mensagem_opt_out" in body:
+            cfg["mensagem_opt_out"] = str(body["mensagem_opt_out"] or "").strip() or RESPOSTA_OPT_OUT
         if "consultor_padrao" in body:
             cfg["consultor_padrao"] = normalize_phone(str(body["consultor_padrao"] or ""))
             if cfg["consultor_padrao"]:
@@ -989,6 +1046,34 @@ def api_encaminhar_lead_manual():
             canal = admin_acc if str(admin_acc.get("connection_status", "")).lower() == "open" else conta_origem
             res_envio = send_whatsapp_text(consultor_tel, msg, account=canal)
             enviado_api = bool(res_envio)
+
+        registrar_encaminhamento_permanente({
+            "tipo": "manual_1_clique",
+            "lead_phone": lead_phone,
+            "lead_name": lead_name,
+            "chip_origem": conta_origem.get("instance_name", ""),
+            "consultant_name": consultor_nome,
+            "consultant_phone": consultor_tel,
+            "notes": lead_notes,
+            "sent_via_api": enviado_api,
+        })
+        # Grava também na planilha do lead
+        try:
+            with CSV_LOCK:
+                if os.path.exists(LEADS_CSV):
+                    rows_fw = []
+                    with open(LEADS_CSV, "r", encoding="utf-8", errors="replace") as f_fw:
+                        rd_fw = csv.DictReader(f_fw)
+                        fn_fw = [fn for fn in (rd_fw.fieldnames or COLUNAS_PADRAO) if fn is not None]
+                        for r_fw in rd_fw:
+                            r_fw.pop(None, None)
+                            if phones_match(r_fw.get("telefone", ""), lead_phone):
+                                r_fw["encaminhado_para"] = consultor_nome
+                                r_fw["encaminhado_em"] = datetime.now().isoformat()
+                            rows_fw.append(r_fw)
+                    salvar_leads_csv(rows_fw, fn_fw, allow_downgrade=True)
+        except Exception:
+            pass
 
         log_event(
             "lead_forwarded",
@@ -1119,22 +1204,23 @@ def api_disparar_campanha():
                 lead["ultima_interacao_em"] = lead.get("ultima_interacao_em") or datetime.now().isoformat()
                 ja_conversado_count += 1
                 skipped_sent += 1
-                salvar_leads_csv(leads, fieldnames)
+                atualizar_lead_pos_disparo(tel, conta_escolhida["id"], status_novo="enviado")
                 continue
 
             attempts += 1
             if resp and "messages" in resp:
                 cid = conta_escolhida["id"]
                 inst_name = conta_escolhida.get("instance_name", cid)
+                msg_id = resp["messages"][0].get("id", "")
                 lead["status"] = "enviado"
                 lead["conta_id"] = cid
-                lead["message_id"] = resp["messages"][0].get("id", "")
+                lead["message_id"] = msg_id
                 lead["ultima_interacao_em"] = datetime.now().isoformat()
                 sent += 1
                 por_conta[cid] = por_conta.get(cid, 0) + 1
                 conta_escolhida["enviados_hoje"] = int(conta_escolhida.get("enviados_hoje", 0)) + 1
                 registrar_disparo_conta(cid)
-                salvar_leads_csv(leads, fieldnames)
+                atualizar_lead_pos_disparo(tel, cid, message_id=msg_id, status_novo="enviado")
                 log_event(
                     "campaign_sent",
                     tel,
@@ -1143,14 +1229,14 @@ def api_disparar_campanha():
                         "instance_name": inst_name,
                         "account_name": conta_escolhida.get("nome", cid),
                         "dry_run": dry_run,
-                        "message_id": lead["message_id"],
+                        "message_id": msg_id,
                     },
                 )
             elif resp and resp.get("error") == "sem_whatsapp":
                 lead["status"] = "sem_whatsapp"
                 lead["ultima_interacao_em"] = datetime.now().isoformat()
                 sem_whatsapp_count += 1
-                salvar_leads_csv(leads, fieldnames)
+                atualizar_lead_pos_disparo(tel, conta_escolhida["id"], status_novo="sem_whatsapp")
             elif resp and resp.get("fatal_connection"):
                 bad_id = conta_escolhida["id"]
                 inst_name = conta_escolhida.get("instance_name", bad_id)
@@ -1166,7 +1252,6 @@ def api_disparar_campanha():
                 espera = 0.04 if dry_run else random.uniform(min_delay, max_delay)
                 time.sleep(espera)
 
-        salvar_leads_csv(leads, fieldnames)
         return jsonify({
             "ok": True,
             "mode": "DRY-RUN" if dry_run else "EVOLUTION-LIVE",
@@ -1203,26 +1288,81 @@ def api_simular_webhook():
 
 @app.route("/api/leads/atualizar", methods=["POST"])
 def api_atualizar_lead():
-    """Atualiza manualmente o status de um lead pelo ID."""
+    """Atualiza manualmente o status de um lead pelo ID e, se movido para opt_out, envia mensagem configurada."""
     body = request.get_json(silent=True) or {}
     lead_id = str(body.get("id", "")).strip()
     new_status = str(body.get("status", "novo")).strip().lower()
     if not os.path.exists(LEADS_CSV):
         return jsonify({"ok": False}), 404
 
-    leads: List[Dict] = []
-    with open(LEADS_CSV, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        fieldnames = list(reader.fieldnames or COLUNAS_PADRAO)
-        for row in reader:
-            if str(row.get("id")) == lead_id:
-                row["status"] = new_status
-                row["opt_out"] = "true" if new_status == "opt_out" else "false"
-                row["ultima_interacao_em"] = datetime.now().isoformat()
-            leads.append(row)
+    routing_cfg = load_routing_config()
+    send_opt_out_msg = body.get("send_opt_out_msg")
+    if send_opt_out_msg is None:
+        send_opt_out_msg = bool(routing_cfg.get("enviar_msg_opt_out_manual", True))
 
-    salvar_leads_csv(leads, fieldnames)
-    return jsonify({"ok": True}), 200
+    alvo_row: Optional[Dict] = None
+    status_anterior = ""
+
+    with CSV_LOCK:
+        leads: List[Dict] = []
+        with open(LEADS_CSV, "r", encoding="utf-8", errors="replace") as f:
+            reader = csv.DictReader(f)
+            fieldnames = [fn for fn in (reader.fieldnames or COLUNAS_PADRAO) if fn is not None]
+            for row in reader:
+                row.pop(None, None)
+                if str(row.get("id")) == lead_id:
+                    status_anterior = str(row.get("status", "novo")).strip().lower()
+                    row["status"] = new_status
+                    row["opt_out"] = "true" if new_status == "opt_out" else "false"
+                    row["ultima_interacao_em"] = datetime.now().isoformat()
+                    alvo_row = dict(row)
+                leads.append(row)
+
+        salvar_leads_csv(leads, fieldnames, allow_downgrade=True)
+
+    if alvo_row:
+        tel_reg = normalize_phone(alvo_row.get("telefone", ""))
+        if tel_reg and new_status in ("enviado", "interessado", "respondeu", "opt_out"):
+            registrar_historico_permanente(tel_reg)
+        log_event(
+            "manual_status_change",
+            tel_reg or lead_id,
+            {"lead_id": lead_id, "old_status": status_anterior, "new_status": new_status},
+        )
+
+    opt_out_msg_sent = False
+    instance_used = ""
+    if new_status == "opt_out" and status_anterior != "opt_out" and send_opt_out_msg and alvo_row:
+        tel_alvo = normalize_phone(alvo_row.get("telefone", ""))
+        nome_alvo = str(alvo_row.get("nome") or "Cliente").strip()
+        cid_alvo = str(alvo_row.get("conta_id") or "").strip()
+        conta_envio = resolver_conta_whatsapp(cid_alvo) if cid_alvo and cid_alvo != "conta_admin" else resolver_conta_whatsapp()
+        if conta_envio.get("admin_only") or conta_envio.get("id") == "conta_admin":
+            ativas = get_active_accounts("todas_ativas", dry_run=False)
+            if ativas:
+                conta_envio = ativas[0]
+        instance_used = conta_envio.get("instance_name") or conta_envio.get("id", "")
+        msg_despedida = str(routing_cfg.get("mensagem_opt_out") or RESPOSTA_OPT_OUT).replace("{nome}", nome_alvo)
+        if tel_alvo and not (conta_envio.get("admin_only") or conta_envio.get("id") == "conta_admin"):
+            res_envio = send_whatsapp_text(tel_alvo, msg_despedida, account=conta_envio)
+            opt_out_msg_sent = res_envio is not None
+            log_event(
+                "manual_opt_out_sent",
+                tel_alvo,
+                {
+                    "lead_id": lead_id,
+                    "account_id": conta_envio.get("id"),
+                    "instance_name": instance_used,
+                    "sent": opt_out_msg_sent,
+                    "message": msg_despedida,
+                },
+            )
+
+    return jsonify({
+        "ok": True,
+        "opt_out_msg_sent": opt_out_msg_sent,
+        "instance_name": instance_used,
+    }), 200
 
 
 def _phone_dedup_key(phone: str) -> str:
@@ -1783,9 +1923,16 @@ def main() -> None:
     port = int(os.getenv("PORT", 5000))
     debug = os.getenv("DEBUG", "False").lower() == "true"
 
-    logger.info(f"Iniciando Assistant to the Lead Manager (Evolution API 5x Instâncias) na porta {port}")
+    logger.info(f"Iniciando Assistant to the Lead Manager (Evolution API 50x Instâncias + Admin) na porta {port}")
     logger.info(f"Painel Web: http://localhost:{port}/")
     logger.info(f"Webhook Evolution API: http://localhost:{port}/webhook")
+
+    try:
+        restaurados = reconciliar_eventos_no_csv(EVENTS_LOG)
+        if restaurados > 0:
+            logger.info(f"[Reconciliação Automática] {restaurados} lead(s) restaurados a partir de {EVENTS_LOG}")
+    except Exception as exc:
+        logger.warning(f"[Reconciliação Automática] Aviso: {exc}")
 
     try:
         c0 = load_whatsapp_accounts()[0]

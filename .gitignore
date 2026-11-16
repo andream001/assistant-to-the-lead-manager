@@ -4,6 +4,7 @@
 data/leads.local.csv
 data/leads_real*.csv
 data/historico_enviados_permanente.txt
+data/encaminhamentos_permanente.jsonl
 data/restrictions_errors.log
 data/routing_config.json
 data/events.log
