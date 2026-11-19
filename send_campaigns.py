@@ -28,7 +28,7 @@ MAX_WHATSAPP_ACCOUNTS = 50
 
 # Configuração Global da Evolution API
 EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL", "http://localhost:8081").rstrip("/")
-EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY", "lead_manager_evo_key_2026")
+EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY", "")
 WEBHOOK_INTERNAL_URL = os.getenv("WEBHOOK_INTERNAL_URL", "http://host.docker.internal:5000/webhook")
 
 # Campaign & Anti-Ban Settings

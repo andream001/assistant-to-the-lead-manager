@@ -974,7 +974,7 @@ tr:hover td{background:rgba(128,128,128,.05)}
         </div>
         <div class="field">
           <label>EVOLUTION_API_KEY (Senha Global)</label>
-          <input class="inp" id="cfgEvoKey" placeholder="lead_manager_evo_key_2026">
+          <input class="inp" id="cfgEvoKey" placeholder="****">
         </div>
         <div class="field">
           <label>CONSULTANT_PHONE_NUMBER (Consultor Padrão)</label>
@@ -1474,7 +1474,7 @@ async function carregarDashboard(){
     if(!msgEl.value&&cfg.mensagem_padrao)msgEl.value=cfg.mensagem_padrao;
 
     document.getElementById('cfgEvoUrl').value=cfg.evolution_api_url||'http://localhost:8081';
-    document.getElementById('cfgEvoKey').value=cfg.evolution_api_key||'lead_manager_evo_key_2026';
+    document.getElementById('cfgEvoKey').value=cfg.evolution_api_key||'****';
     document.getElementById('cfgConsultantPhone').value=cfg.consultant_phone||'';
     document.getElementById('cfgDailyLimit').value=cfg.daily_limit||60;
     document.getElementById('cfgMinDelay').value=cfg.min_delay||15;

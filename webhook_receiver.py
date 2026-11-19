@@ -77,8 +77,8 @@ load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY") or hashlib.sha256(f"{EVOLUTION_API_KEY}_panel".encode()).hexdigest()
-PANEL_USER = os.getenv("PANEL_USER", "admin")
-PANEL_PASSWORD = os.getenv("PANEL_PASSWORD", "leadmanager2026")
+PANEL_USER = os.getenv("PANEL_USER", "")
+PANEL_PASSWORD = os.getenv("PANEL_PASSWORD", "")
 PANEL_AUTH_ENABLED = os.getenv("PANEL_AUTH_ENABLED", "true").lower() == "true"
 CAMPANHA_LOCK = threading.Lock()
 CAMPAIGN_STATE_LOCK = threading.Lock()
